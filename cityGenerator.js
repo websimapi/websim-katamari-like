@@ -2,19 +2,18 @@ export class CityGenerator {
   constructor(scene, world) {
     this.scene = scene;
     this.world = world;
-    this.chunkSize = 100;
+    this.chunkSize = 150; 
     this.loadedChunks = new Set();
     this.objects = new Map();
-    this.minObjectSize = 0.2;   // Minimum size for collectibles
-    this.maxObjectSize = 15;    // Maximum size for buildings
-    this.renderDistance = 1; // Reduced from 2 to 1 chunk distance
+    this.minObjectSize = 0.2;   
+    this.maxObjectSize = 15;    
+    this.renderDistance = 1; 
   }
 
   update(playerPosition) {
     const currentChunk = this.getChunkCoords(playerPosition);
     const nearbyChunks = this.getNearbyChunks(currentChunk);
     
-    // Generate new chunks
     nearbyChunks.forEach(chunk => {
       const key = `${chunk.x},${chunk.z}`;
       if (!this.loadedChunks.has(key)) {
@@ -23,7 +22,6 @@ export class CityGenerator {
       }
     });
 
-    // Remove far chunks
     this.loadedChunks.forEach(key => {
       const [x, z] = key.split(',').map(Number);
       const distance = Math.sqrt(
@@ -31,7 +29,6 @@ export class CityGenerator {
         Math.pow(z - currentChunk.z, 2)
       );
       
-      // Reduced render distance check
       if (distance > this.renderDistance) {
         this.removeChunk({ x, z });
         this.loadedChunks.delete(key);
@@ -48,7 +45,6 @@ export class CityGenerator {
 
   getNearbyChunks(chunk) {
     const nearby = [];
-    // Reduced loop range from -1/1 to match render distance
     for (let dx = -this.renderDistance; dx <= this.renderDistance; dx++) {
       for (let dz = -this.renderDistance; dz <= this.renderDistance; dz++) {
         nearby.push({
@@ -64,28 +60,24 @@ export class CityGenerator {
     const objects = [];
     const occupiedSpaces = new Set();
     
-    // Function to check if a position is too close to existing objects
     const isSpaceOccupied = (x, z, size) => {
-      // Check in a grid around the object based on its size
-      const gridSize = Math.ceil(size);
+      const gridSize = Math.ceil(size * 1.2); 
       for (let dx = -gridSize; dx <= gridSize; dx++) {
         for (let dz = -gridSize; dz <= gridSize; dz++) {
-          const key = `${Math.round((x + dx)/2)},${Math.round((z + dz)/2)}`;
+          const key = `${Math.floor(x + dx)},${Math.floor(z + dz)}`;
           if (occupiedSpaces.has(key)) return true;
         }
       }
       
-      // If space is free, mark it as occupied
       for (let dx = -gridSize; dx <= gridSize; dx++) {
         for (let dz = -gridSize; dz <= gridSize; dz++) {
-          const key = `${Math.round((x + dx)/2)},${Math.round((z + dz)/2)}`;
+          const key = `${Math.floor(x + dx)},${Math.floor(z + dz)}`;
           occupiedSpaces.add(key);
         }
       }
       return false;
     };
 
-    // Function to get valid spawn position
     const getValidPosition = (size) => {
       let attempts = 0;
       let x, z;
@@ -98,8 +90,7 @@ export class CityGenerator {
       return attempts < 50 ? { x, z } : null;
     };
 
-    // Generate tiny collectibles (leaves, papers, etc)
-    for (let i = 0; i < 50; i++) {  
+    for (let i = 0; i < 30; i++) {  
       const size = this.minObjectSize + Math.random() * 0.3;
       const pos = getValidPosition(size);
       if (!pos) continue;
@@ -123,8 +114,7 @@ export class CityGenerator {
       objects.push({ mesh, body });
     }
 
-    // Generate medium collectibles (trash bins, boxes, etc)
-    for (let i = 0; i < 25; i++) {  
+    for (let i = 0; i < 15; i++) {  
       const size = 0.5 + Math.random() * 2;
       const pos = getValidPosition(size);
       if (!pos) continue;
@@ -146,8 +136,7 @@ export class CityGenerator {
       objects.push({ mesh, body });
     }
 
-    // Generate large objects (cars, small structures)
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 5; i++) {
       const size = 2 + Math.random() * 3;
       const pos = getValidPosition(size * 2);
       if (!pos) continue;
@@ -172,25 +161,67 @@ export class CityGenerator {
       objects.push({ mesh, body });
     }
     
-    // Generate buildings of varying sizes
-    for (let i = 0; i < 12; i++) {  
+    for (let i = 0; i < 8; i++) {  
       const width = 3 + Math.random() * 5;   
       const height = 6 + Math.random() * 14;
-      const size = Math.max(width, height);
+      const depth = width; 
       
       const pos = getValidPosition(width);
       if (!pos) continue;
       
-      const geometry = new THREE.BoxGeometry(width, height, width);
-      const material = new THREE.MeshPhongMaterial({ 
-        color: 0x808080,
+      const buildingGroup = new THREE.Group();
+      
+      const buildingGeometry = new THREE.BoxGeometry(width, height, depth);
+      const buildingMaterial = new THREE.MeshPhongMaterial({ 
+        color: this.getRandomBuildingColor(),
         flatShading: true
       });
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(pos.x, height/2, pos.z);
-      this.scene.add(mesh);
+      const buildingMesh = new THREE.Mesh(buildingGeometry, buildingMaterial);
+      
+      const windowRows = Math.floor(height / 2) - 1;
+      const windowCols = Math.floor(width / 1.5);
+      const windowSize = 0.3;
+      const windowSpacing = {
+        vertical: (height - 2) / (windowRows + 1),
+        horizontal: (width - 2) / (windowCols + 1)
+      };
 
-      const shape = new CANNON.Box(new CANNON.Vec3(width/2, height/2, width/2));
+      for (let row = 0; row < windowRows; row++) {
+        for (let col = 0; col < windowCols; col++) {
+          const windowGeometry = new THREE.BoxGeometry(windowSize, windowSize, 0.1);
+          const windowMaterial = new THREE.MeshPhongMaterial({
+            color: 0xffffcc,
+            emissive: 0x666666
+          });
+          
+          const xPos = -width/2 + windowSpacing.horizontal * (col + 1);
+          const yPos = -height/2 + windowSpacing.vertical * (row + 1) + 1;
+          
+          const frontWindow = new THREE.Mesh(windowGeometry, windowMaterial);
+          frontWindow.position.set(xPos, yPos, depth/2 + 0.1);
+          buildingGroup.add(frontWindow);
+          
+          const backWindow = new THREE.Mesh(windowGeometry, windowMaterial);
+          backWindow.position.set(xPos, yPos, -depth/2 - 0.1);
+          buildingGroup.add(backWindow);
+          
+          const sideWindow1 = new THREE.Mesh(windowGeometry, windowMaterial);
+          sideWindow1.rotation.y = Math.PI/2;
+          sideWindow1.position.set(width/2 + 0.1, yPos, xPos);
+          buildingGroup.add(sideWindow1);
+          
+          const sideWindow2 = new THREE.Mesh(windowGeometry, windowMaterial);
+          sideWindow2.rotation.y = Math.PI/2;
+          sideWindow2.position.set(-width/2 - 0.1, yPos, xPos);
+          buildingGroup.add(sideWindow2);
+        }
+      }
+
+      buildingGroup.add(buildingMesh);
+      buildingGroup.position.set(pos.x, height/2, pos.z);
+      this.scene.add(buildingGroup);
+
+      const shape = new CANNON.Box(new CANNON.Vec3(width/2, height/2, depth/2));
       const body = new CANNON.Body({
         mass: width * height * 2,
         shape: shape,
@@ -198,7 +229,7 @@ export class CityGenerator {
       });
       this.world.addBody(body);
 
-      objects.push({ mesh, body });
+      objects.push({ mesh: buildingGroup, body });
     }
 
     this.objects.set(`${chunk.x},${chunk.z}`, objects);
@@ -218,14 +249,26 @@ export class CityGenerator {
 
   getRandomColor() {
     const colors = [
-      0xFF0000, // red
-      0x00FF00, // green
-      0x0000FF, // blue
-      0xFFFF00, // yellow
-      0xFF00FF, // magenta
-      0x00FFFF, // cyan
-      0xFFA500, // orange
-      0x800080  // purple
+      0xFF0000, 
+      0x00FF00, 
+      0x0000FF, 
+      0xFFFF00, 
+      0xFF00FF, 
+      0x00FFFF, 
+      0xFFA500, 
+      0x800080  
+    ];
+    return colors[Math.floor(Math.random() * colors.length)];
+  }
+
+  getRandomBuildingColor() {
+    const colors = [
+      0x808080, 
+      0x606060, 
+      0xa0a0a0, 
+      0x8b4513, 
+      0x4a4a4a, 
+      0xd3d3d3  
     ];
     return colors[Math.floor(Math.random() * colors.length)];
   }

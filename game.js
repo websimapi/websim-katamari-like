@@ -45,35 +45,57 @@ class Game {
       { once: true }
     );
 
-    // Add fog to the scene for smoother distance culling
-    this.scene.fog = new THREE.Fog(0x87ceeb, 50, 150);
-
     this.start();
   }
 
   setupScene() {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x87ceeb);
+    
+    // Enhanced sky gradient
+    const verticalGradient = {
+      topColor: new THREE.Color(0x1a4b77),    // Deeper blue at top
+      bottomColor: new THREE.Color(0x87ceeb)   // Lighter blue at horizon
+    };
+    
+    const skyMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        topColor: { value: verticalGradient.topColor },
+        bottomColor: { value: verticalGradient.bottomColor }
+      },
+      vertexShader: `
+        varying vec3 vWorldPosition;
+        void main() {
+          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+          vWorldPosition = worldPosition.xyz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 topColor;
+        uniform vec3 bottomColor;
+        varying vec3 vWorldPosition;
+        void main() {
+          float h = normalize(vWorldPosition).y;
+          float gradient = max(pow(max(h, 0.0), 0.4), 0.0);
+          gl_FragColor = vec4(mix(bottomColor, topColor, gradient), 1.0);
+        }
+      `,
+      side: THREE.BackSide
+    });
 
+    const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
+    const skyDome = new THREE.Mesh(skyGeometry, skyMaterial);
+    this.scene.add(skyDome);
+
+    // Setup renderer
     this.renderer = new THREE.WebGLRenderer({
       canvas: document.getElementById('gameCanvas'),
       antialias: true
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(window.devicePixelRatio);
-
-    // Add post-processing for bloom effect
-    this.composer = new THREE.EffectComposer(this.renderer);
-    this.renderPass = new THREE.RenderPass(this.scene, this.camera);
-    this.composer.addPass(this.renderPass);
-
-    this.bloomPass = new THREE.UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight),
-      1.5, // strength
-      0.4, // radius
-      0.85 // threshold
-    );
-    this.composer.addPass(this.bloomPass);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   }
 
   setupPhysics() {
@@ -287,80 +309,17 @@ class Game {
     this.camera.lookAt(playerPos);
   }
 
-  updateGlowingObjects() {
-    const playerRadius = this.player.radius;
-    const playerPosition = this.player.body.position;
-    const glowRange = 10; // Reduced to 10 meters
-
-    this.cityGenerator.objects.forEach((objects) => {
-      objects.forEach((obj) => {
-        const objectSize = obj.body.shapes[0].radius ||
-          Math.max(
-            obj.body.shapes[0].halfExtents.x,
-            obj.body.shapes[0].halfExtents.y,
-            obj.body.shapes[0].halfExtents.z
-          );
-
-        const distance = new THREE.Vector3(
-          obj.body.position.x,
-          obj.body.position.y,
-          obj.body.position.z
-        ).distanceTo(
-          new THREE.Vector3(
-            playerPosition.x,
-            playerPosition.y,
-            playerPosition.z
-          )
-        );
-
-        // Only glow if object is both smaller than player and within range
-        if (objectSize < playerRadius && distance < glowRange) {
-          if (!obj.mesh.userData.isGlowing) {
-            obj.mesh.userData.isGlowing = true;
-            obj.mesh.userData.originalMaterial = obj.mesh.material;
-            obj.mesh.material = new THREE.MeshPhongMaterial({
-              color: obj.mesh.userData.originalMaterial.color,
-              emissive: obj.mesh.userData.originalMaterial.color,
-              emissiveIntensity: 0.5
-            });
-          }
-        } else if (obj.mesh.userData.isGlowing) {
-          obj.mesh.userData.isGlowing = false;
-          obj.mesh.material = obj.mesh.userData.originalMaterial;
-        }
-      });
-    });
-  }
-
   start() {
-    let lastTime = performance.now();
-    
     const animate = () => {
-      const currentTime = performance.now();
-      const deltaTime = (currentTime - lastTime) / 1000;
-      lastTime = currentTime;
-
-      // Limit physics updates to 60 FPS
-      if (deltaTime < 1/30) {  // Only update if frame time is reasonable
-        this.world.step(1/60);
-        this.player.update();
-        this.updateCamera();
-        
-        // Only update city generation every other frame
-        if (this.frame % 2 === 0) {
-          this.cityGenerator.update(this.player.body.position);
-        }
-        
-        // Only update glowing objects every 4th frame
-        if (this.frame % 4 === 0) {
-          this.updateGlowingObjects();
-        }
-
-        this.composer.render();
-      }
-
-      this.frame = (this.frame || 0) + 1;
       requestAnimationFrame(animate);
+
+      this.world.step(1 / 60);
+      this.player.update();
+      this.updateCamera();
+      this.cityGenerator.update(this.player.body.position);
+
+      // Render scene directly without composer
+      this.renderer.render(this.scene, this.camera);
     };
 
     animate();
