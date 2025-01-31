@@ -24,11 +24,11 @@ class Game {
     this.addGround();
 
     // Variables for speed roll mechanics
-    this.lastJoystickData = [];
-    this.speedRollCooldown = false;
-    this.speedRollCooldownTime = 5000; // 5 seconds cooldown
-    this.speedRollActive = false;
-    this.speedRollDuration = 2000; // 2 seconds duration
+    this.lastJoystickDirections = [];
+    this.accelerateCooldown = false;
+    this.accelerateCooldownTime = 5000; // 5 seconds cooldown
+    this.accelerateActive = false;
+    this.accelerateDuration = 2000; // 2 seconds duration
 
     this.setupControls();
     this.setupCollisions();
@@ -148,11 +148,11 @@ class Game {
       };
 
       // Record joystick movement
-      this.recordJoystickData(data);
+      this.recordJoystickDirections(data);
 
-      // Check for speed roll activation
-      if (this.detectSpeedRoll() && !this.speedRollCooldown) {
-        this.activateSpeedRoll();
+      // Check for accelerate activation
+      if (this.detectAccelerate() && !this.accelerateCooldown) {
+        this.activateAccelerate();
       }
 
       // Apply force to player
@@ -192,79 +192,89 @@ class Game {
     });
   }
 
-  recordJoystickData(data) {
+  recordJoystickDirections(data) {
     const now = Date.now();
     const vector = data.vector;
 
     // Ignore small movements
-    const magnitude = Math.hypot(vector.x, vector.y);
-    if (magnitude < 0.5) return;
+    if (vector.length() < 0.5) return;
 
-    // Determine the dominant axis
-    const axis = Math.abs(vector.x) > Math.abs(vector.y) ? 'x' : 'y';
-    const direction = vector[axis] >= 0 ? 1 : -1;
+    // Determine the primary direction
+    const angle = data.angle.degree;
+    let direction;
+    if (angle >= 45 && angle < 135) {
+      direction = 'up';
+    } else if (angle >= 135 && angle < 225) {
+      direction = 'left';
+    } else if (angle >= 225 && angle < 315) {
+      direction = 'down';
+    } else {
+      direction = 'right';
+    }
 
-    this.lastJoystickData.push({
-      axis: axis,
+    this.lastJoystickDirections.push({
       direction: direction,
       time: now
     });
 
     // Keep only the last 500ms of data
-    this.lastJoystickData = this.lastJoystickData.filter(
+    this.lastJoystickDirections = this.lastJoystickDirections.filter(
       (entry) => now - entry.time <= 500
     );
   }
 
-  detectSpeedRoll() {
-    if (this.lastJoystickData.length < 3) {
-      return false;
+  detectAccelerate() {
+    if (this.lastJoystickDirections.length < 4) return false;
+
+    const directions = this.lastJoystickDirections;
+    const lastDirections = directions.slice(-4);
+
+    // Check for back and forth pattern
+    const dirSeq = lastDirections.map(entry => entry.direction);
+    const pattern1 = ['up', 'down', 'up', 'down'];
+    const pattern2 = ['left', 'right', 'left', 'right'];
+    const pattern3 = ['down', 'up', 'down', 'up'];
+    const pattern4 = ['right', 'left', 'right', 'left'];
+
+    if (
+      this.matchesPattern(dirSeq, pattern1) ||
+      this.matchesPattern(dirSeq, pattern2) ||
+      this.matchesPattern(dirSeq, pattern3) ||
+      this.matchesPattern(dirSeq, pattern4)
+    ) {
+      return true;
     }
 
-    const entries = this.lastJoystickData;
-    // Use the first entry's axis as dominant axis
-    let axis = entries[0].axis;
-    let directionChanges = 0;
-    let lastDirection = entries[0].direction;
-
-    for (let i = 1; i < entries.length; i++) {
-      if (entries[i].axis !== axis) {
-        // Axis changed, reset detection
-        axis = entries[i].axis;
-        directionChanges = 0;
-        lastDirection = entries[i].direction;
-      } else {
-        if (entries[i].direction !== lastDirection) {
-          directionChanges++;
-          lastDirection = entries[i].direction;
-        }
-      }
-
-      if (directionChanges >= 2) {
-        return true;
-      }
-    }
     return false;
   }
 
-  activateSpeedRoll() {
-    this.speedRollActive = true;
-    this.speedRollCooldown = true;
-    this.player.activateSpeedRoll();
+  matchesPattern(sequence, pattern) {
+    for (let i = 0; i < pattern.length; i++) {
+      if (sequence[i] !== pattern[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  activateAccelerate() {
+    this.accelerateActive = true;
+    this.accelerateCooldown = true;
+    this.player.activateAccelerate();
 
     // Clear joystick data to prevent multiple activations
-    this.lastJoystickData = [];
+    this.lastJoystickDirections = [];
 
-    // Deactivate speed roll after duration
+    // Deactivate accelerate after duration
     setTimeout(() => {
-      this.speedRollActive = false;
-      this.player.deactivateSpeedRoll();
-    }, this.speedRollDuration);
+      this.accelerateActive = false;
+      this.player.deactivateAccelerate();
+    }, this.accelerateDuration);
 
     // Reset cooldown after cooldown time
     setTimeout(() => {
-      this.speedRollCooldown = false;
-    }, this.speedRollCooldownTime);
+      this.accelerateCooldown = false;
+    }, this.accelerateCooldownTime);
   }
 
   setupCollisions() {

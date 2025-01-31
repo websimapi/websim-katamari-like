@@ -23,14 +23,17 @@ export class PlayerBall {
     // Keep track of attached meshes and their directions
     this.attachedMeshes = [];
 
-    // Speed roll and acceleration variables
-    this.speedRollMultiplier = 2; // Multiplier during speed roll
-    this.isSpeedRollActive = false;
+    // Movement variables
     this.moving = false;
-    this.previousDirection = new THREE.Vector2(0, 0);
+    this.baseSpeed = 5;
     this.speedMultiplier = 1;
     this.maxSpeedMultiplier = 3;
     this.accelerationRate = 0.01; // Rate at which speed increases
+    this.previousDirection = new THREE.Vector2(0, 0);
+
+    // Accelerate action variables
+    this.isAccelerateActive = false;
+    this.accelerateMultiplier = 2; // Multiplier during accelerate
   }
 
   update() {
@@ -45,7 +48,8 @@ export class PlayerBall {
       }
     }
 
-    // Attached meshes are children of this.mesh and will rotate automatically
+    // Adjust damping based on size to allow larger balls to maintain speed better
+    this.body.linearDamping = Math.max(0.2, 1 - this.radius / 50); // Damping decreases with size
   }
 
   applyForce(force) {
@@ -68,30 +72,32 @@ export class PlayerBall {
     // Save current direction
     this.previousDirection.copy(currentDirection);
 
-    // Apply speed roll multiplier if active
+    // Calculate total speed multiplier
     let totalMultiplier = this.speedMultiplier;
-    if (this.isSpeedRollActive) {
-      totalMultiplier *= this.speedRollMultiplier;
+    if (this.isAccelerateActive) {
+      totalMultiplier *= this.accelerateMultiplier;
     }
 
-    const scaledForce = new CANNON.Vec3(
-      force.x * totalMultiplier / (this.body.mass * 0.5),
+    // Apply force, adjust for mass and size to ensure larger balls can still move adequately
+    const massFactor = Math.pow(this.body.mass, 0.5); // Adjust based on mass
+    const appliedForce = new CANNON.Vec3(
+      (force.x * totalMultiplier * this.baseSpeed) / massFactor,
       0,
-      force.y * totalMultiplier / (this.body.mass * 0.5)
+      (force.y * totalMultiplier * this.baseSpeed) / massFactor
     );
-    this.body.applyImpulse(scaledForce, this.body.position);
+    this.body.applyForce(appliedForce, this.body.position);
   }
 
   stopMoving() {
     this.moving = false;
   }
 
-  activateSpeedRoll() {
-    this.isSpeedRollActive = true;
+  activateAccelerate() {
+    this.isAccelerateActive = true;
   }
 
-  deactivateSpeedRoll() {
-    this.isSpeedRollActive = false;
+  deactivateAccelerate() {
+    this.isAccelerateActive = false;
   }
 
   absorbObject(object) {
@@ -150,10 +156,14 @@ export class PlayerBall {
 
     // Update physics body
     this.radius = newRadius;
+
+    // Update mass proportional to volume
+    this.body.mass = this.radius * this.radius * this.radius;
+    this.body.updateMassProperties();
+
+    // Update shape
     this.body.shapes = [];
     this.body.addShape(new CANNON.Sphere(this.radius));
-    this.body.mass += object.body.mass;
-    this.body.updateMassProperties();
     this.body.aabbNeedsUpdate = true;
 
     // Update visual mesh
