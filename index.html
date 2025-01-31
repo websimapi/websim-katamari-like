@@ -1,40 +1,31 @@
 <html>
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>3D Katamari-like</title>
+  <title>Katamari Game</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div id="game-container">
-    <canvas id="gameCanvas"></canvas>
-    <div id="ui">
-      <div id="size">Size: <span id="size-value">1.0</span>m</div>
-      <div id="score">Objects collected: <span id="score-value">0</span></div>
-      <div id="mobile-controls">
-        <div id="joystick-area"></div>
-      </div>
-    </div>
+  <canvas id="gameCanvas"></canvas>
+  <div id="ui">
+    <div>Size: <span id="size-value">1.0</span></div>
+    <div>Objects Collected: <span id="score-value">0</span></div>
   </div>
+  <div id="mobile-controls">
+    <div id="joystick-area"></div>
+  </div>
+  <div id="start-prompt">Tap anywhere to start!</div>
+  <audio id="bgMusic" loop>
+    <source src="Electric Dreamers - Track 2 - Sonauto (2).wav" type="audio/wav">
+  </audio>
   
-  <!-- Load Three.js and its dependencies first -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/build/three.min.js"></script>
-  
-  <!-- Load post-processing dependencies in correct order -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/postprocessing/Pass.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/shaders/CopyShader.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/postprocessing/EffectComposer.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/postprocessing/ShaderPass.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/postprocessing/RenderPass.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
-
-  <!-- Load other dependencies -->
-  <script src="https://cdn.jsdelivr.net/npm/cannon@0.6.2/build/cannon.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.10.1/dist/nipplejs.min.js"></script>
-
-  <!-- Load game code -->
-  <script type="module" src="game.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.9.0/dist/nipplejs.min.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+  <script src="game.js" type="module"></script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>

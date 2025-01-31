@@ -40,7 +40,7 @@ export class PlayerBall {
   }
 
   absorbObject(object) {
-    if (!object || object.body.mass === 0) return;
+    if (!object || !object.body || object.body.mass === 0) return;
 
     const objectSize = object.body.shapes[0].radius || 
                       Math.max(
@@ -51,65 +51,73 @@ export class PlayerBall {
 
     if (objectSize >= this.radius) return;
 
-    // Remove the original object from the scene and physics world
-    this.scene.remove(object.mesh);
-    this.world.removeBody(object.body);
-    this.collectedObjects.push(object);
+    try {
+      // Remove the original object from the scene and physics world
+      if (object.mesh && object.mesh.parent) {
+        object.mesh.parent.remove(object.mesh);
+      }
+      if (object.body && object.body.world) {
+        object.body.world.removeBody(object.body);
+      }
+      this.collectedObjects.push(object);
 
-    // Create and attach the visual representation as a child of the player mesh
-    const attachedMesh = object.mesh.clone();
+      // Create and attach the visual representation
+      const attachedMesh = object.mesh.clone();
+      
+      // Calculate random direction on the surface of the sphere
+      const phi = Math.random() * Math.PI * 2;
+      const theta = Math.random() * Math.PI;
+      const direction = new THREE.Vector3(
+        Math.sin(theta) * Math.cos(phi),
+        Math.sin(theta) * Math.sin(phi),
+        Math.cos(theta)
+      );
 
-    // Calculate random direction on the surface of the sphere
-    const phi = Math.random() * Math.PI * 2;
-    const theta = Math.random() * Math.PI;
-    const direction = new THREE.Vector3(
-      Math.sin(theta) * Math.cos(phi),
-      Math.sin(theta) * Math.sin(phi),
-      Math.cos(theta)
-    );
+      // Position the attached mesh on the surface of the ball
+      attachedMesh.position.copy(direction.multiplyScalar(this.radius));
+      
+      // Random rotation for variety
+      attachedMesh.quaternion.setFromEuler(new THREE.Euler(
+        Math.random() * Math.PI,
+        Math.random() * Math.PI,
+        Math.random() * Math.PI
+      ));
 
-    // Set the position and rotation relative to the player mesh
-    attachedMesh.position.copy(direction.clone().multiplyScalar(this.radius));
-    attachedMesh.quaternion.set(
-      Math.random(), Math.random(), Math.random(), Math.random()
-    ).normalize();
+      // Scale down the attached object slightly
+      const scale = 0.6;
+      attachedMesh.scale.set(scale, scale, scale);
 
-    // Scale down the attached object slightly
-    const scale = 0.6;
-    attachedMesh.scale.set(scale, scale, scale);
+      this.mesh.add(attachedMesh);
+      this.attachedMeshes.push({
+        mesh: attachedMesh,
+        direction: direction
+      });
 
-    // Add the attached mesh as a child of the player mesh
-    this.mesh.add(attachedMesh);
+      // Calculate new size based on combined volume
+      const objectVolume = (4 / 3) * Math.PI * Math.pow(objectSize, 3);
+      const currentVolume = (4 / 3) * Math.PI * Math.pow(this.radius, 3);
+      const newVolume = currentVolume + objectVolume;
+      const newRadius = Math.pow((3 * newVolume) / (4 * Math.PI), 1 / 3);
 
-    // Keep track of the attached mesh and its direction
-    this.attachedMeshes.push({
-      mesh: attachedMesh,
-      direction: direction
-    });
+      // Update physics body
+      this.radius = newRadius;
+      const newShape = new CANNON.Sphere(this.radius);
+      this.body.shapes = [newShape];
+      this.body.mass += object.body.mass;
+      this.body.updateMassProperties();
 
-    // Calculate new size based on combined volume
-    const objectVolume = (4 / 3) * Math.PI * Math.pow(objectSize, 3);
-    const currentVolume = (4 / 3) * Math.PI * Math.pow(this.radius, 3);
-    const newVolume = currentVolume + objectVolume;
-    const newRadius = Math.pow((3 * newVolume) / (4 * Math.PI), 1 / 3);
+      // Update visual mesh
+      const newGeometry = new THREE.SphereGeometry(this.radius, 32, 32);
+      this.mesh.geometry.dispose();
+      this.mesh.geometry = newGeometry;
 
-    // Update physics body
-    this.radius = newRadius;
-    this.body.shapes = [];
-    this.body.addShape(new CANNON.Sphere(this.radius));
-    this.body.mass += object.body.mass;
-    this.body.updateMassProperties();
-    this.body.aabbNeedsUpdate = true;
-
-    // Update visual mesh
-    const newGeometry = new THREE.SphereGeometry(this.radius, 32, 32);
-    this.mesh.geometry.dispose();
-    this.mesh.geometry = newGeometry;
-
-    // Reposition attached meshes based on new radius
-    this.attachedMeshes.forEach(attached => {
-      attached.mesh.position.copy(attached.direction.clone().multiplyScalar(this.radius));
-    });
+      // Reposition attached meshes based on new radius
+      this.attachedMeshes.forEach(attached => {
+        attached.mesh.position.copy(attached.direction.multiplyScalar(this.radius));
+      });
+    } catch (error) {
+      console.error('Error in absorbObject:', error);
+    }
   }
 
   getSize() {

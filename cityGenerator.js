@@ -143,8 +143,10 @@ export class CityGenerator {
     const objects = this.objects.get(key);
     if (objects) {
       objects.forEach(obj => {
-        this.scene.remove(obj.mesh);
-        this.world.remove(obj.body);
+        if (obj.mesh && obj.body) {
+          this.scene.remove(obj.mesh);
+          this.world.removeBody(obj.body);
+        }
       });
       this.objects.delete(key);
     }
