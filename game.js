@@ -45,6 +45,9 @@ class Game {
       { once: true }
     );
 
+    // Add fog to the scene for smoother distance culling
+    this.scene.fog = new THREE.Fog(0x87ceeb, 50, 150);
+
     this.start();
   }
 
@@ -330,16 +333,34 @@ class Game {
   }
 
   start() {
+    let lastTime = performance.now();
+    
     const animate = () => {
+      const currentTime = performance.now();
+      const deltaTime = (currentTime - lastTime) / 1000;
+      lastTime = currentTime;
+
+      // Limit physics updates to 60 FPS
+      if (deltaTime < 1/30) {  // Only update if frame time is reasonable
+        this.world.step(1/60);
+        this.player.update();
+        this.updateCamera();
+        
+        // Only update city generation every other frame
+        if (this.frame % 2 === 0) {
+          this.cityGenerator.update(this.player.body.position);
+        }
+        
+        // Only update glowing objects every 4th frame
+        if (this.frame % 4 === 0) {
+          this.updateGlowingObjects();
+        }
+
+        this.composer.render();
+      }
+
+      this.frame = (this.frame || 0) + 1;
       requestAnimationFrame(animate);
-
-      this.world.step(1 / 60);
-      this.player.update();
-      this.updateCamera();
-      this.cityGenerator.update(this.player.body.position);
-      this.updateGlowingObjects();
-
-      this.composer.render();
     };
 
     animate();
