@@ -23,35 +23,20 @@ class Game {
     // Add ground
     this.addGround();
 
-    // Variables for speed roll mechanics
-    this.lastJoystickDirections = [];
-    this.accelerateCooldown = false;
-    this.accelerateCooldownTime = 5000; // 5 seconds cooldown
-    this.accelerateActive = false;
-    this.accelerateDuration = 2000; // 2 seconds duration
-
     this.setupControls();
     this.setupCollisions();
 
-    // Get the audio element
-    if (!document.getElementById('background-audio')) {
-      const audio = document.createElement('audio');
-      audio.id = 'background-audio';
-      audio.src = 'Electric Dreamers - Track 2 - Sonauto (2).wav';
-      audio.loop = true;
-      document.body.appendChild(audio);
-    }
-    this.audio = document.getElementById('background-audio');
+    // Load the audio file
+    this.audio = new Audio('Electric Dreamers - Track 2 - Sonauto (2).wav');
+    this.audio.loop = true;
     this.audioPlayed = false;
 
     // Play audio on first tap of screen
     window.addEventListener(
-      'click',
+      'pointerdown',
       () => {
         if (!this.audioPlayed) {
-          this.audio.play().catch((error) => {
-            console.error('Error playing audio:', error);
-          });
+          this.audio.play();
           this.audioPlayed = true;
         }
       },
@@ -131,155 +116,69 @@ class Game {
       color: 'white'
     });
 
-    // Start music on first joystick touch
-    this.joystick.on('start', (evt, data) => {
-      if (!this.audioPlayed) {
-        this.audio.play().catch((error) => {
-          console.error('Error playing audio:', error);
-        });
-        this.audioPlayed = true;
-      }
-    });
-
     this.joystick.on('move', (evt, data) => {
+      const maxForce = 5;
       const force = {
-        x: data.vector.x * 5,
-        z: -data.vector.y * 5
+        x: data.vector.x * maxForce,
+        y: -data.vector.y * maxForce
       };
 
-      // Record joystick movement
-      this.recordJoystickDirections(data);
+      const boostThreshold = 0.8;
+      const isBoosting =
+        (data.distance / data.instance.options.size) > boostThreshold &&
+        (data.angle.degree > 315 || data.angle.degree < 45);
 
-      // Check for accelerate activation
-      if (this.detectAccelerate() && !this.accelerateCooldown) {
-        this.activateAccelerate();
-      }
-
-      // Apply force to player
-      this.player.applyForce(force);
+      this.player.applyForce(force, isBoosting);
+      this.player.setBoosting(isBoosting);
     });
 
     this.joystick.on('end', () => {
-      // Stop the player when joystick is released
-      this.player.stopMoving();
+      this.player.setBoosting(false);
     });
 
-    // Keyboard controls for testing on PC
+    this.keys = {};
+
     window.addEventListener('keydown', (e) => {
-      const force = { x: 0, z: 0 };
-      const speed = 5;
-
-      switch (e.key) {
-        case 'ArrowUp':
-          force.z = -speed;
-          break;
-        case 'ArrowDown':
-          force.z = speed;
-          break;
-        case 'ArrowLeft':
-          force.x = -speed;
-          break;
-        case 'ArrowRight':
-          force.x = speed;
-          break;
-      }
-
-      this.player.applyForce(force);
+      this.keys[e.key] = true;
+      this.updateKeyboardControls();
     });
 
-    window.addEventListener('keyup', () => {
-      this.player.stopMoving();
+    window.addEventListener('keyup', (e) => {
+      this.keys[e.key] = false;
+      this.updateKeyboardControls();
     });
   }
 
-  recordJoystickDirections(data) {
-    const now = Date.now();
-    const vector = data.vector;
+  updateKeyboardControls() {
+    const force = { x: 0, y: 0 };
+    const speed = 5;
+    let isMoving = false;
 
-    if (!vector || typeof vector.x !== 'number' || typeof vector.y !== 'number') {
-      return;
+    if (this.keys['ArrowUp'] || this.keys['w']) {
+      force.y = -speed;
+      isMoving = true;
+    }
+    if (this.keys['ArrowDown'] || this.keys['s']) {
+      force.y = speed;
+      isMoving = true;
+    }
+    if (this.keys['ArrowLeft'] || this.keys['a']) {
+      force.x = -speed;
+      isMoving = true;
+    }
+    if (this.keys['ArrowRight'] || this.keys['d']) {
+      force.x = speed;
+      isMoving = true;
     }
 
-    // Ignore small movements
-    const magnitude = Math.sqrt(vector.x * vector.x + vector.y * vector.y);
-    if (magnitude < 0.5) return;
+    const isBoosting = (this.keys['Shift'] || this.keys[' ']) && isMoving;
 
-    // Determine the primary direction
-    const angle = data.angle.degree;
-    let direction;
-    if (angle >= 45 && angle < 135) {
-      direction = 'up';
-    } else if (angle >= 135 && angle < 225) {
-      direction = 'left';
-    } else if (angle >= 225 && angle < 315) {
-      direction = 'down';
+    if (isMoving) {
+      this.player.applyForce(force, isBoosting);
+      this.player.setBoosting(isBoosting);
     } else {
-      direction = 'right';
+      this.player.setBoosting(false);
     }
-
-    this.lastJoystickDirections.push({
-      direction: direction,
-      time: now
-    });
-
-    // Keep only the last 500ms of data
-    this.lastJoystickDirections = this.lastJoystickDirections.filter(
-      (entry) => now - entry.time <= 500
-    );
-  }
-
-  detectAccelerate() {
-    if (this.lastJoystickDirections.length < 4) return false;
-
-    const directions = this.lastJoystickDirections;
-    const lastDirections = directions.slice(-4);
-
-    // Check for back and forth pattern
-    const dirSeq = lastDirections.map(entry => entry.direction);
-    const pattern1 = ['up', 'down', 'up', 'down'];
-    const pattern2 = ['left', 'right', 'left', 'right'];
-    const pattern3 = ['down', 'up', 'down', 'up'];
-    const pattern4 = ['right', 'left', 'right', 'left'];
-
-    if (
-      this.matchesPattern(dirSeq, pattern1) ||
-      this.matchesPattern(dirSeq, pattern2) ||
-      this.matchesPattern(dirSeq, pattern3) ||
-      this.matchesPattern(dirSeq, pattern4)
-    ) {
-      return true;
-    }
-
-    return false;
-  }
-
-  matchesPattern(sequence, pattern) {
-    for (let i = 0; i < pattern.length; i++) {
-      if (sequence[i] !== pattern[i]) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  activateAccelerate() {
-    this.accelerateActive = true;
-    this.accelerateCooldown = true;
-    this.player.activateAccelerate();
-
-    // Clear joystick data to prevent multiple activations
-    this.lastJoystickDirections = [];
-
-    // Deactivate accelerate after duration
-    setTimeout(() => {
-      this.accelerateActive = false;
-      this.player.deactivateAccelerate();
-    }, this.accelerateDuration);
-
-    // Reset cooldown after cooldown time
-    setTimeout(() => {
-      this.accelerateCooldown = false;
-    }, this.accelerateCooldownTime);
   }
 
   setupCollisions() {

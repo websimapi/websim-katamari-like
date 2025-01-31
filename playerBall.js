@@ -3,7 +3,10 @@ export class PlayerBall {
     this.scene = scene;
     this.world = world;
     this.collectedObjects = [];
-    this.radius = 0.5; 
+    this.radius = 0.5;
+    this.isBoosting = false;
+
+    // Create the player mesh
     this.mesh = new THREE.Mesh(
       new THREE.SphereGeometry(this.radius, 32, 32),
       new THREE.MeshPhongMaterial({ color: 0xFF69B4, flatShading: true })
@@ -11,8 +14,9 @@ export class PlayerBall {
     this.mesh.castShadow = true;
     scene.add(this.mesh);
 
+    // Create the physics body
     this.body = new CANNON.Body({
-      mass: 2, 
+      mass: 2,
       shape: new CANNON.Sphere(this.radius),
       position: new CANNON.Vec3(0, this.radius, 0),
       linearDamping: 0.4,
@@ -23,92 +27,93 @@ export class PlayerBall {
     // Keep track of attached meshes and their directions
     this.attachedMeshes = [];
 
-    // Movement variables
-    this.moving = false;
-    this.baseSpeed = 5;
-    this.speedMultiplier = 1;
-    this.maxSpeedMultiplier = 3;
-    this.accelerationRate = 0.01; // Rate at which speed increases
-    this.previousDirection = new THREE.Vector2(0, 0);
-
-    // Accelerate action variables
-    this.isAccelerateActive = false;
-    this.accelerateMultiplier = 2; // Multiplier during accelerate
+    // Particle system for boost effect
+    this.particleGroup = new THREE.Group();
+    this.scene.add(this.particleGroup);
+    this.particles = [];
   }
 
   update() {
     this.mesh.position.copy(this.body.position);
     this.mesh.quaternion.copy(this.body.quaternion);
 
-    // Decay speed multiplier when not moving
-    if (!this.moving && this.speedMultiplier > 1) {
-      this.speedMultiplier -= this.accelerationRate;
-      if (this.speedMultiplier < 1) {
-        this.speedMultiplier = 1;
+    if (this.isBoosting) {
+      this.emitParticles();
+    }
+    this.updateParticles();
+  }
+
+  applyForce(force, boost = false) {
+    const inputForceMagnitude = Math.sqrt(force.x * force.x + force.y * force.y);
+    if (inputForceMagnitude > 0) {
+      const normalizedForce = {
+        x: force.x / inputForceMagnitude,
+        y: force.y / inputForceMagnitude
+      };
+
+      const baseAcceleration = 10;
+      const boostMultiplier = 2;
+      const acceleration = boost ? baseAcceleration * boostMultiplier : baseAcceleration;
+
+      const scaledForceMagnitude = this.body.mass * acceleration;
+      const scaledForce = new CANNON.Vec3(
+        normalizedForce.x * scaledForceMagnitude,
+        0,
+        normalizedForce.y * scaledForceMagnitude
+      );
+
+      this.body.applyForce(scaledForce, this.body.position);
+    }
+  }
+
+  setBoosting(boosting) {
+    this.isBoosting = boosting;
+  }
+
+  emitParticles() {
+    const particleGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+    const particleMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+    particle.position.copy(this.mesh.position);
+
+    // Position the particle behind the player
+    const behindDirection = new THREE.Vector3(0, 0, -1);
+    behindDirection.applyQuaternion(this.mesh.quaternion);
+    particle.position.add(behindDirection.multiplyScalar(this.radius + 0.5));
+
+    particle.lifeTime = 0.5; // seconds
+    particle.createdAt = performance.now() / 1000; // current time in seconds
+
+    this.particleGroup.add(particle);
+    this.particles.push(particle);
+  }
+
+  updateParticles() {
+    const currentTime = performance.now() / 1000;
+    this.particles = this.particles.filter((particle) => {
+      const age = currentTime - particle.createdAt;
+      if (age > particle.lifeTime) {
+        this.particleGroup.remove(particle);
+        return false;
+      } else {
+        // Update particle properties (e.g., fade out)
+        particle.material.opacity = 1 - (age / particle.lifeTime);
+        particle.material.transparent = true;
+        return true;
       }
-    }
-
-    // Adjust damping based on size to allow larger balls to maintain speed better
-    this.body.linearDamping = Math.max(0.2, 1 - this.radius / 50); // Damping decreases with size
-  }
-
-  applyForce(force) {
-    this.moving = true;
-
-    // Calculate current direction
-    const currentDirection = new THREE.Vector2(force.x, force.z).normalize();
-
-    // Check if moving in the same direction
-    if (currentDirection.dot(this.previousDirection) > 0.95) {
-      // Increase speed multiplier up to max
-      if (this.speedMultiplier < this.maxSpeedMultiplier) {
-        this.speedMultiplier += this.accelerationRate;
-      }
-    } else {
-      // Reset speed multiplier if direction changes
-      this.speedMultiplier = 1;
-    }
-
-    // Save current direction
-    this.previousDirection.copy(currentDirection);
-
-    // Calculate total speed multiplier
-    let totalMultiplier = this.speedMultiplier;
-    if (this.isAccelerateActive) {
-      totalMultiplier *= this.accelerateMultiplier;
-    }
-
-    // Apply force, adjust for mass and size to ensure larger balls can still move adequately
-    const massFactor = Math.pow(this.body.mass, 0.5); // Adjust based on mass
-    const appliedForce = new CANNON.Vec3(
-      (force.x * totalMultiplier * this.baseSpeed) / massFactor,
-      0,
-      (force.z * totalMultiplier * this.baseSpeed) / massFactor
-    );
-    this.body.applyForce(appliedForce, this.body.position);
-  }
-
-  stopMoving() {
-    this.moving = false;
-  }
-
-  activateAccelerate() {
-    this.isAccelerateActive = true;
-  }
-
-  deactivateAccelerate() {
-    this.isAccelerateActive = false;
+    });
   }
 
   absorbObject(object) {
     if (!object || object.body.mass === 0) return;
 
-    const objectSize = object.body.shapes[0].radius || 
-                      Math.max(
-                        object.body.shapes[0].halfExtents.x,
-                        object.body.shapes[0].halfExtents.y,
-                        object.body.shapes[0].halfExtents.z
-                      );
+    const objectSize =
+      object.body.shapes[0].radius ||
+      Math.max(
+        object.body.shapes[0].halfExtents.x,
+        object.body.shapes[0].halfExtents.y,
+        object.body.shapes[0].halfExtents.z
+      );
 
     if (objectSize >= this.radius) return;
 
@@ -132,7 +137,10 @@ export class PlayerBall {
     // Set the position and rotation relative to the player mesh
     attachedMesh.position.copy(direction.clone().multiplyScalar(this.radius));
     attachedMesh.quaternion.set(
-      Math.random(), Math.random(), Math.random(), Math.random()
+      Math.random(),
+      Math.random(),
+      Math.random(),
+      Math.random()
     ).normalize();
 
     // Scale down the attached object slightly
@@ -156,14 +164,10 @@ export class PlayerBall {
 
     // Update physics body
     this.radius = newRadius;
-
-    // Update mass proportional to volume
-    this.body.mass = this.radius * this.radius * this.radius;
-    this.body.updateMassProperties();
-
-    // Update shape
     this.body.shapes = [];
     this.body.addShape(new CANNON.Sphere(this.radius));
+    this.body.mass += object.body.mass;
+    this.body.updateMassProperties();
     this.body.aabbNeedsUpdate = true;
 
     // Update visual mesh
