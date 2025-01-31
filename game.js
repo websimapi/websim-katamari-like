@@ -144,7 +144,7 @@ class Game {
     this.joystick.on('move', (evt, data) => {
       const force = {
         x: data.vector.x * 5,
-        y: -data.vector.y * 5
+        z: -data.vector.y * 5
       };
 
       // Record joystick movement
@@ -166,15 +166,15 @@ class Game {
 
     // Keyboard controls for testing on PC
     window.addEventListener('keydown', (e) => {
-      const force = { x: 0, y: 0 };
+      const force = { x: 0, z: 0 };
       const speed = 5;
 
       switch (e.key) {
         case 'ArrowUp':
-          force.y = -speed;
+          force.z = -speed;
           break;
         case 'ArrowDown':
-          force.y = speed;
+          force.z = speed;
           break;
         case 'ArrowLeft':
           force.x = -speed;
@@ -195,6 +195,10 @@ class Game {
   recordJoystickDirections(data) {
     const now = Date.now();
     const vector = data.vector;
+
+    if (!vector || typeof vector.x !== 'number' || typeof vector.y !== 'number') {
+      return;
+    }
 
     // Ignore small movements
     const magnitude = Math.sqrt(vector.x * vector.x + vector.y * vector.y);

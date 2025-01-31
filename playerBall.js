@@ -56,7 +56,7 @@ export class PlayerBall {
     this.moving = true;
 
     // Calculate current direction
-    const currentDirection = new THREE.Vector2(force.x, force.y).normalize();
+    const currentDirection = new THREE.Vector2(force.x, force.z).normalize();
 
     // Check if moving in the same direction
     if (currentDirection.dot(this.previousDirection) > 0.95) {
@@ -83,7 +83,7 @@ export class PlayerBall {
     const appliedForce = new CANNON.Vec3(
       (force.x * totalMultiplier * this.baseSpeed) / massFactor,
       0,
-      (force.y * totalMultiplier * this.baseSpeed) / massFactor
+      (force.z * totalMultiplier * this.baseSpeed) / massFactor
     );
     this.body.applyForce(appliedForce, this.body.position);
   }
