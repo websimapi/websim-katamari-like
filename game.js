@@ -3,6 +3,16 @@ import { PlayerBall } from './playerBall.js';
 
 class Game {
   constructor() {
+    // Create camera first
+    this.camera = new THREE.PerspectiveCamera(
+      75,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
+    );
+    this.camera.position.set(0, 10, 20);
+    this.camera.lookAt(0, 0, 0);
+
     this.setupScene();
     this.setupPhysics();
     this.setupLights();
@@ -13,7 +23,6 @@ class Game {
     // Add ground
     this.addGround();
     
-    this.setupCamera();
     this.setupControls();
     this.setupCollisions();
     this.start();
@@ -63,14 +72,7 @@ class Game {
   }
 
   setupCamera() {
-    this.camera = new THREE.PerspectiveCamera(
-      75,
-      window.innerWidth / window.innerHeight,
-      0.1,
-      1000
-    );
-    this.camera.position.set(0, 10, 20);
-    this.camera.lookAt(0, 0, 0);
+    // Removed from constructor, kept for future reference
   }
 
   addGround() {
