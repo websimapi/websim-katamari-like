@@ -154,7 +154,7 @@ class Game {
 
       this.player.applyForce(force);
       if (boost) {
-        this.player.triggerBoost(1000); // Boost lasts 1 second
+        this.player.triggerBoost(3000); // Boost lasts 3 seconds
       }
     });
 
@@ -163,6 +163,7 @@ class Game {
     });
 
     this.keys = {};
+    this.keyboardMovements = [];
 
     window.addEventListener('keydown', (e) => {
       this.keys[e.key] = true;
@@ -197,11 +198,37 @@ class Game {
       isMoving = true;
     }
 
-    const isBoosting = (this.keys['Shift'] || this.keys[' ']) && isMoving;
+    const currentTime = performance.now();
+    const directionY = force.y;
+
+    if (isMoving && Math.abs(directionY) > 0.5) { // Threshold to filter small movements
+      this.keyboardMovements.push({ time: currentTime, directionY: directionY });
+    }
+
+    // Remove old keyboard movements (older than 500 ms)
+    this.keyboardMovements = this.keyboardMovements.filter(m => currentTime - m.time < 500);
+
+    // Check for rapid opposite direction movements
+    let signChanges = 0;
+    for (let i = 1; i < this.keyboardMovements.length; i++) {
+      if ((this.keyboardMovements[i].directionY > 0 && this.keyboardMovements[i - 1].directionY <= 0) ||
+          (this.keyboardMovements[i].directionY <= 0 && this.keyboardMovements[i - 1].directionY > 0)) {
+        signChanges++;
+      }
+    }
+
+    let boost = false;
+    if (signChanges >= 3) {
+      boost = true;
+      // Clear movements to prevent immediate re-trigger
+      this.keyboardMovements = [];
+    }
 
     if (isMoving) {
-      this.player.applyForce(force, isBoosting);
-      this.player.setBoosting(isBoosting);
+      this.player.applyForce(force);
+      if (boost) {
+        this.player.triggerBoost(3000); // Boost lasts 3 seconds
+      }
     } else {
       this.player.setBoosting(false);
     }

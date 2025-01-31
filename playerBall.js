@@ -40,7 +40,7 @@ export class PlayerBall {
     this.mesh.position.copy(this.body.position);
     this.mesh.quaternion.copy(this.body.quaternion);
 
-    if (this.isBoosting) {
+    if (performance.now() < this.boostEndTime) {
       this.emitParticles();
     }
     this.updateParticles();
@@ -57,8 +57,8 @@ export class PlayerBall {
         y: force.y / inputForceMagnitude
       };
 
-      const baseAcceleration = 20; 
-      const boostMultiplier = 2;
+      const baseAcceleration = 40; 
+      const boostMultiplier = 5;   
       const currentTime = performance.now();
 
       const isBoosting = currentTime < this.boostEndTime;
@@ -78,6 +78,12 @@ export class PlayerBall {
 
   triggerBoost(duration) {
     this.boostEndTime = performance.now() + duration;
+  }
+
+  setBoosting(isBoosting) {
+    if (!isBoosting) {
+      this.boostEndTime = 0;
+    }
   }
 
   emitParticles() {
