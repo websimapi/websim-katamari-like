@@ -1,7 +1,7 @@
 import { CityGenerator } from './cityGenerator.js';
 import { PlayerBall } from './playerBall.js';
 
-class Game {
+export class Game {
   constructor() {
     // Create camera first
     this.camera = new THREE.PerspectiveCamera(
@@ -232,5 +232,3 @@ class Game {
     animate();
   }
 }
-
-new Game();
