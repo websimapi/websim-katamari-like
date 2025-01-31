@@ -26,6 +26,8 @@ class Game {
     this.setupControls();
     this.setupCollisions();
 
+    this.joystickMovements = [];
+
     // Load the audio file
     this.audio = new Audio('Electric Dreamers - Track 2 - Sonauto (2).wav');
     this.audio.loop = true;
@@ -123,13 +125,37 @@ class Game {
         y: -data.vector.y * maxForce
       };
 
-      const boostThreshold = 0.8;
-      const isBoosting =
-        (data.distance / data.instance.options.size) > boostThreshold &&
-        (data.angle.degree > 315 || data.angle.degree < 45);
+      // Record the current directionY and timestamp
+      const currentTime = performance.now();
+      const directionY = data.vector.y;
 
-      this.player.applyForce(force, isBoosting);
-      this.player.setBoosting(isBoosting);
+      if (Math.abs(directionY) > 0.5) { // Threshold to filter small movements
+        this.joystickMovements.push({ time: currentTime, directionY: directionY });
+      }
+
+      // Remove old joystick movements (older than 500 ms)
+      this.joystickMovements = this.joystickMovements.filter(m => currentTime - m.time < 500);
+
+      // Check for rapid opposite direction movements
+      let signChanges = 0;
+      for (let i = 1; i < this.joystickMovements.length; i++) {
+        if ((this.joystickMovements[i].directionY > 0 && this.joystickMovements[i - 1].directionY <= 0) ||
+            (this.joystickMovements[i].directionY <= 0 && this.joystickMovements[i - 1].directionY > 0)) {
+          signChanges++;
+        }
+      }
+
+      let boost = false;
+      if (signChanges >= 3) {
+        boost = true;
+        // Clear movements to prevent immediate re-trigger
+        this.joystickMovements = [];
+      }
+
+      this.player.applyForce(force);
+      if (boost) {
+        this.player.triggerBoost(1000); // Boost lasts 1 second
+      }
     });
 
     this.joystick.on('end', () => {

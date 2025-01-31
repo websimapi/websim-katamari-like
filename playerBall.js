@@ -31,6 +31,9 @@ export class PlayerBall {
     this.particleGroup = new THREE.Group();
     this.scene.add(this.particleGroup);
     this.particles = [];
+
+    // Boost state
+    this.boostEndTime = 0;
   }
 
   update() {
@@ -41,9 +44,12 @@ export class PlayerBall {
       this.emitParticles();
     }
     this.updateParticles();
+
+    // Update boosting state
+    this.isBoosting = performance.now() < this.boostEndTime;
   }
 
-  applyForce(force, boost = false) {
+  applyForce(force) {
     const inputForceMagnitude = Math.sqrt(force.x * force.x + force.y * force.y);
     if (inputForceMagnitude > 0) {
       const normalizedForce = {
@@ -51,9 +57,13 @@ export class PlayerBall {
         y: force.y / inputForceMagnitude
       };
 
-      const baseAcceleration = 10;
+      const baseAcceleration = 20; 
       const boostMultiplier = 2;
-      const acceleration = boost ? baseAcceleration * boostMultiplier : baseAcceleration;
+      const currentTime = performance.now();
+
+      const isBoosting = currentTime < this.boostEndTime;
+
+      const acceleration = isBoosting ? baseAcceleration * boostMultiplier : baseAcceleration;
 
       const scaledForceMagnitude = this.body.mass * acceleration;
       const scaledForce = new CANNON.Vec3(
@@ -66,8 +76,8 @@ export class PlayerBall {
     }
   }
 
-  setBoosting(boosting) {
-    this.isBoosting = boosting;
+  triggerBoost(duration) {
+    this.boostEndTime = performance.now() + duration;
   }
 
   emitParticles() {
