@@ -34,15 +34,14 @@ class Game {
     this.setupCollisions();
 
     // Get the audio element
-   !function(){
-      var audio = document.createElement('audio');
+    if (!document.getElementById('background-audio')) {
+      const audio = document.createElement('audio');
       audio.id = 'background-audio';
       audio.src = 'Electric Dreamers - Track 2 - Sonauto (2).wav';
+      audio.loop = true;
       document.body.appendChild(audio);
-    }();
-
+    }
     this.audio = document.getElementById('background-audio');
-    this.audio.loop = true;
     this.audioPlayed = false;
 
     // Play audio on first tap of screen
@@ -132,6 +131,16 @@ class Game {
       color: 'white'
     });
 
+    // Start music on first joystick touch
+    this.joystick.on('start', (evt, data) => {
+      if (!this.audioPlayed) {
+        this.audio.play().catch((error) => {
+          console.error('Error playing audio:', error);
+        });
+        this.audioPlayed = true;
+      }
+    });
+
     this.joystick.on('move', (evt, data) => {
       const force = {
         x: data.vector.x * 5,
@@ -185,8 +194,19 @@ class Game {
 
   recordJoystickData(data) {
     const now = Date.now();
+    const vector = data.vector;
+
+    // Ignore small movements
+    const magnitude = Math.hypot(vector.x, vector.y);
+    if (magnitude < 0.5) return;
+
+    // Determine the dominant axis
+    const axis = Math.abs(vector.x) > Math.abs(vector.y) ? 'x' : 'y';
+    const direction = vector[axis] >= 0 ? 1 : -1;
+
     this.lastJoystickData.push({
-      angle: data.angle.degree,
+      axis: axis,
+      direction: direction,
       time: now
     });
 
@@ -197,19 +217,33 @@ class Game {
   }
 
   detectSpeedRoll() {
-    if (this.lastJoystickData.length < 2) {
+    if (this.lastJoystickData.length < 3) {
       return false;
     }
 
-    const firstEntry = this.lastJoystickData[0];
-    const lastEntry = this.lastJoystickData[this.lastJoystickData.length - 1];
-    const angleDifference = Math.abs(firstEntry.angle - lastEntry.angle);
+    const entries = this.lastJoystickData;
+    // Use the first entry's axis as dominant axis
+    let axis = entries[0].axis;
+    let directionChanges = 0;
+    let lastDirection = entries[0].direction;
 
-    // Detect back-and-forth movement greater than 150 degrees within 500ms
-    if (angleDifference > 150 && (lastEntry.time - firstEntry.time) <= 500) {
-      return true;
+    for (let i = 1; i < entries.length; i++) {
+      if (entries[i].axis !== axis) {
+        // Axis changed, reset detection
+        axis = entries[i].axis;
+        directionChanges = 0;
+        lastDirection = entries[i].direction;
+      } else {
+        if (entries[i].direction !== lastDirection) {
+          directionChanges++;
+          lastDirection = entries[i].direction;
+        }
+      }
+
+      if (directionChanges >= 2) {
+        return true;
+      }
     }
-
     return false;
   }
 
@@ -217,6 +251,9 @@ class Game {
     this.speedRollActive = true;
     this.speedRollCooldown = true;
     this.player.activateSpeedRoll();
+
+    // Clear joystick data to prevent multiple activations
+    this.lastJoystickData = [];
 
     // Deactivate speed roll after duration
     setTimeout(() => {
