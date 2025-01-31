@@ -29,6 +29,19 @@ class Game {
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(window.devicePixelRatio);
+    
+    // Add post-processing for bloom effect
+    this.composer = new THREE.EffectComposer(this.renderer);
+    this.renderPass = new THREE.RenderPass(this.scene, this.camera);
+    this.composer.addPass(this.renderPass);
+    
+    this.bloomPass = new THREE.UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      1.5, // strength
+      0.4, // radius
+      0.85 // threshold
+    );
+    this.composer.addPass(this.bloomPass);
   }
 
   setupPhysics() {
@@ -144,6 +157,49 @@ class Game {
     this.camera.lookAt(playerPos);
   }
 
+  updateGlowingObjects() {
+    const playerRadius = this.player.radius;
+    const playerPosition = this.player.body.position;
+
+    // Update all objects in loaded chunks
+    this.cityGenerator.objects.forEach((objects) => {
+      objects.forEach((obj) => {
+        const objectSize = obj.body.shapes[0].radius || 
+                         Math.max(
+                           obj.body.shapes[0].halfExtents.x,
+                           obj.body.shapes[0].halfExtents.y,
+                           obj.body.shapes[0].halfExtents.z
+                         );
+        
+        const distance = new THREE.Vector3(
+          obj.body.position.x,
+          obj.body.position.y,
+          obj.body.position.z
+        ).distanceTo(new THREE.Vector3(
+          playerPosition.x,
+          playerPosition.y,
+          playerPosition.z
+        ));
+
+        // If object is smaller than player and within range
+        if (objectSize < playerRadius && distance < 10) {
+          if (!obj.mesh.userData.isGlowing) {
+            obj.mesh.userData.isGlowing = true;
+            obj.mesh.userData.originalMaterial = obj.mesh.material;
+            obj.mesh.material = new THREE.MeshPhongMaterial({
+              color: obj.mesh.userData.originalMaterial.color,
+              emissive: obj.mesh.userData.originalMaterial.color,
+              emissiveIntensity: 0.5
+            });
+          }
+        } else if (obj.mesh.userData.isGlowing) {
+          obj.mesh.userData.isGlowing = false;
+          obj.mesh.material = obj.mesh.userData.originalMaterial;
+        }
+      });
+    });
+  }
+
   start() {
     const animate = () => {
       requestAnimationFrame(animate);
@@ -152,8 +208,9 @@ class Game {
       this.player.update();
       this.updateCamera();
       this.cityGenerator.update(this.player.body.position);
+      this.updateGlowingObjects();
       
-      this.renderer.render(this.scene, this.camera);
+      this.composer.render();
     };
     
     animate();

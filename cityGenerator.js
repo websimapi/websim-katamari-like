@@ -67,7 +67,9 @@ export class CityGenerator {
       const size = this.minObjectSize + Math.random() * 0.3; // 0.2 to 0.5
       
       const geometry = new THREE.SphereGeometry(size, 8, 8);
-      const material = new THREE.MeshPhongMaterial({ color: this.getRandomColor() });
+      const material = new THREE.MeshPhongMaterial({ 
+        color: this.getRandomColor(),
+      });
       const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(x, size, z);
       this.scene.add(mesh);
