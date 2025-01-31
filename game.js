@@ -33,17 +33,26 @@ class Game {
     this.setupControls();
     this.setupCollisions();
 
-    // Load the audio file
-    this.audio = new Audio('Electric Dreamers - Track 2 - Sonauto (2).wav');
+    // Get the audio element
+   !function(){
+      var audio = document.createElement('audio');
+      audio.id = 'background-audio';
+      audio.src = 'Electric Dreamers - Track 2 - Sonauto (2).wav';
+      document.body.appendChild(audio);
+    }();
+
+    this.audio = document.getElementById('background-audio');
     this.audio.loop = true;
     this.audioPlayed = false;
 
     // Play audio on first tap of screen
     window.addEventListener(
-      'pointerdown',
+      'click',
       () => {
         if (!this.audioPlayed) {
-          this.audio.play();
+          this.audio.play().catch((error) => {
+            console.error('Error playing audio:', error);
+          });
           this.audioPlayed = true;
         }
       },
