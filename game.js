@@ -33,8 +33,11 @@ class Game {
 
   setupPhysics() {
     this.world = new CANNON.World();
-    this.world.gravity.set(0, -9.82, 0);
+    this.world.gravity.set(0, -9.81, 0);
     this.world.broadphase = new CANNON.NaiveBroadphase();
+    this.world.solver.iterations = 10;
+    this.world.defaultContactMaterial.friction = 0.5;
+    this.world.defaultContactMaterial.restitution = 0.3;
   }
 
   setupLights() {
@@ -88,15 +91,15 @@ class Game {
 
     this.joystick.on('move', (evt, data) => {
       const force = {
-        x: data.vector.x * 10,
-        y: -data.vector.y * 10
+        x: data.vector.x * 5,
+        y: -data.vector.y * 5
       };
       this.player.applyForce(force);
     });
 
     window.addEventListener('keydown', (e) => {
       const force = { x: 0, y: 0 };
-      const speed = 10;
+      const speed = 5;
       
       switch(e.key) {
         case 'ArrowUp': force.y = -speed; break;
