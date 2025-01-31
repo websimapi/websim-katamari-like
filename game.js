@@ -93,7 +93,9 @@ class Game {
       antialias: true
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); 
+    this.renderer.powerPreference = "high-performance";
+    this.renderer.physicallyCorrectLights = false;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   }
@@ -102,9 +104,13 @@ class Game {
     this.world = new CANNON.World();
     this.world.gravity.set(0, -9.81, 0);
     this.world.broadphase = new CANNON.NaiveBroadphase();
-    this.world.solver.iterations = 10;
+    this.world.solver.iterations = 7; 
     this.world.defaultContactMaterial.friction = 0.5;
     this.world.defaultContactMaterial.restitution = 0.3;
+
+    // Add performance optimizations
+    this.world.broadphase = new CANNON.SAPBroadphase(this.world);
+    this.world.allowSleep = true;
   }
 
   setupLights() {
@@ -310,15 +316,24 @@ class Game {
   }
 
   start() {
+    let lastTime = performance.now();
+    const fixedTimeStep = 1.0 / 60.0; 
+    const maxSubSteps = 3; 
+
     const animate = () => {
       requestAnimationFrame(animate);
+      
+      const time = performance.now();
+      const deltaTime = (time - lastTime) / 1000;
+      lastTime = time;
 
-      this.world.step(1 / 60);
+      // Update physics with fixed timestep
+      this.world.step(fixedTimeStep, deltaTime, maxSubSteps);
+      
       this.player.update();
       this.updateCamera();
       this.cityGenerator.update(this.player.body.position);
 
-      // Render scene directly without composer
       this.renderer.render(this.scene, this.camera);
     };
 

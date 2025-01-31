@@ -7,10 +7,12 @@ export class CityGenerator {
     this.objects = new Map();
     this.minObjectSize = 0.2;   
     this.maxObjectSize = 15;    
-    this.renderDistance = 1; 
+    this.renderDistance = 1;  // Keep chunk distance small
+    this.objectRenderDistance = 30; // 30 meter object render distance
   }
 
   update(playerPosition) {
+    // Update chunk loading
     const currentChunk = this.getChunkCoords(playerPosition);
     const nearbyChunks = this.getNearbyChunks(currentChunk);
     
@@ -22,6 +24,7 @@ export class CityGenerator {
       }
     });
 
+    // Remove far chunks
     this.loadedChunks.forEach(key => {
       const [x, z] = key.split(',').map(Number);
       const distance = Math.sqrt(
@@ -33,6 +36,29 @@ export class CityGenerator {
         this.removeChunk({ x, z });
         this.loadedChunks.delete(key);
       }
+    });
+
+    // Update object visibility based on distance
+    this.objects.forEach((objects, chunkKey) => {
+      objects.forEach(obj => {
+        const distanceToPlayer = Math.sqrt(
+          Math.pow(obj.mesh.position.x - playerPosition.x, 2) +
+          Math.pow(obj.mesh.position.z - playerPosition.z, 2)
+        );
+
+        // Show/hide objects based on distance
+        if (distanceToPlayer <= this.objectRenderDistance) {
+          if (!obj.mesh.visible) {
+            obj.mesh.visible = true;
+            obj.body.collisionResponse = true;
+          }
+        } else {
+          if (obj.mesh.visible) {
+            obj.mesh.visible = false;
+            obj.body.collisionResponse = false; // Disable collision for far objects
+          }
+        }
+      });
     });
   }
 
