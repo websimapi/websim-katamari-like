@@ -22,21 +22,76 @@ export class PlayerBall {
 
     // Keep track of attached meshes and their directions
     this.attachedMeshes = [];
+
+    // Speed roll and acceleration variables
+    this.speedRollMultiplier = 2; // Multiplier during speed roll
+    this.isSpeedRollActive = false;
+    this.moving = false;
+    this.previousDirection = new THREE.Vector2(0, 0);
+    this.speedMultiplier = 1;
+    this.maxSpeedMultiplier = 3;
+    this.accelerationRate = 0.01; // Rate at which speed increases
   }
 
   update() {
     this.mesh.position.copy(this.body.position);
     this.mesh.quaternion.copy(this.body.quaternion);
+
+    // Decay speed multiplier when not moving
+    if (!this.moving && this.speedMultiplier > 1) {
+      this.speedMultiplier -= this.accelerationRate;
+      if (this.speedMultiplier < 1) {
+        this.speedMultiplier = 1;
+      }
+    }
+
     // Attached meshes are children of this.mesh and will rotate automatically
   }
 
   applyForce(force) {
+    this.moving = true;
+
+    // Calculate current direction
+    const currentDirection = new THREE.Vector2(force.x, force.y).normalize();
+
+    // Check if moving in the same direction
+    if (currentDirection.dot(this.previousDirection) > 0.95) {
+      // Increase speed multiplier up to max
+      if (this.speedMultiplier < this.maxSpeedMultiplier) {
+        this.speedMultiplier += this.accelerationRate;
+      }
+    } else {
+      // Reset speed multiplier if direction changes
+      this.speedMultiplier = 1;
+    }
+
+    // Save current direction
+    this.previousDirection.copy(currentDirection);
+
+    // Apply speed roll multiplier if active
+    let totalMultiplier = this.speedMultiplier;
+    if (this.isSpeedRollActive) {
+      totalMultiplier *= this.speedRollMultiplier;
+    }
+
     const scaledForce = new CANNON.Vec3(
-      force.x / (this.body.mass * 0.5),
+      force.x * totalMultiplier / (this.body.mass * 0.5),
       0,
-      force.y / (this.body.mass * 0.5)
+      force.y * totalMultiplier / (this.body.mass * 0.5)
     );
     this.body.applyImpulse(scaledForce, this.body.position);
+  }
+
+  stopMoving() {
+    this.moving = false;
+  }
+
+  activateSpeedRoll() {
+    this.isSpeedRollActive = true;
+  }
+
+  deactivateSpeedRoll() {
+    this.isSpeedRollActive = false;
   }
 
   absorbObject(object) {

@@ -23,6 +23,13 @@ class Game {
     // Add ground
     this.addGround();
 
+    // Variables for speed roll mechanics
+    this.lastJoystickData = [];
+    this.speedRollCooldown = false;
+    this.speedRollCooldownTime = 5000; // 5 seconds cooldown
+    this.speedRollActive = false;
+    this.speedRollDuration = 2000; // 2 seconds duration
+
     this.setupControls();
     this.setupCollisions();
 
@@ -121,9 +128,25 @@ class Game {
         x: data.vector.x * 5,
         y: -data.vector.y * 5
       };
+
+      // Record joystick movement
+      this.recordJoystickData(data);
+
+      // Check for speed roll activation
+      if (this.detectSpeedRoll() && !this.speedRollCooldown) {
+        this.activateSpeedRoll();
+      }
+
+      // Apply force to player
       this.player.applyForce(force);
     });
 
+    this.joystick.on('end', () => {
+      // Stop the player when joystick is released
+      this.player.stopMoving();
+    });
+
+    // Keyboard controls for testing on PC
     window.addEventListener('keydown', (e) => {
       const force = { x: 0, y: 0 };
       const speed = 5;
@@ -145,6 +168,57 @@ class Game {
 
       this.player.applyForce(force);
     });
+
+    window.addEventListener('keyup', () => {
+      this.player.stopMoving();
+    });
+  }
+
+  recordJoystickData(data) {
+    const now = Date.now();
+    this.lastJoystickData.push({
+      angle: data.angle.degree,
+      time: now
+    });
+
+    // Keep only the last 500ms of data
+    this.lastJoystickData = this.lastJoystickData.filter(
+      (entry) => now - entry.time <= 500
+    );
+  }
+
+  detectSpeedRoll() {
+    if (this.lastJoystickData.length < 2) {
+      return false;
+    }
+
+    const firstEntry = this.lastJoystickData[0];
+    const lastEntry = this.lastJoystickData[this.lastJoystickData.length - 1];
+    const angleDifference = Math.abs(firstEntry.angle - lastEntry.angle);
+
+    // Detect back-and-forth movement greater than 150 degrees within 500ms
+    if (angleDifference > 150 && (lastEntry.time - firstEntry.time) <= 500) {
+      return true;
+    }
+
+    return false;
+  }
+
+  activateSpeedRoll() {
+    this.speedRollActive = true;
+    this.speedRollCooldown = true;
+    this.player.activateSpeedRoll();
+
+    // Deactivate speed roll after duration
+    setTimeout(() => {
+      this.speedRollActive = false;
+      this.player.deactivateSpeedRoll();
+    }, this.speedRollDuration);
+
+    // Reset cooldown after cooldown time
+    setTimeout(() => {
+      this.speedRollCooldown = false;
+    }, this.speedRollCooldownTime);
   }
 
   setupCollisions() {
