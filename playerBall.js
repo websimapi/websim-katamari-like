@@ -102,8 +102,11 @@ export class PlayerBall {
     
     // Update physics body
     this.radius = newRadius;
-    this.body.shapes[0].radius = this.radius;
-    this.body.shapes[0].computeBoundingSphereRadius();
+    
+    // Remove old shape and add new shape with updated radius
+    this.body.shapes = [];
+    this.body.addShape(new CANNON.Sphere(this.radius));
+    
     this.body.mass += object.body.mass;
     this.body.updateMassProperties();
     this.body.aabbNeedsUpdate = true;
