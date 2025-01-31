@@ -18,13 +18,12 @@ export class Game {
     this.setupLights();
     
     this.cityGenerator = new CityGenerator(this.scene, this.world);
-    this.player = new PlayerBall(this.scene, this.world);
+    this.player = new PlayerBall(this.scene, this.world, this.cityGenerator);
     
     // Add ground
     this.addGround();
     
     this.setupControls();
-    this.setupCollisions();
     this.start();
   }
 
@@ -123,49 +122,6 @@ export class Game {
     });
   }
 
-  setupCollisions() {
-    this.player.body.addEventListener('collide', (event) => {
-      const otherBody = event.body;
-
-      // Skip if other body is the ground (mass === 0)
-      if (otherBody.mass === 0) return;
-
-      // Find the object that corresponds to this physics body
-      const object = Array.from(this.cityGenerator.objects.values())
-        .flat()
-        .find(obj => obj.body === otherBody);
-      
-      if (object) {
-        const objectSize = object.body.shapes[0].radius || 
-                         Math.max(
-                           object.body.shapes[0].halfExtents.x,
-                           object.body.shapes[0].halfExtents.y,
-                           object.body.shapes[0].halfExtents.z
-                         );
-        
-        // Only absorb if the object is smaller than the player
-        if (objectSize < this.player.radius) {
-          this.player.absorbObject(object);
-
-          // Remove the object from the city generator's records
-          for (let [key, objects] of this.cityGenerator.objects.entries()) {
-            const index = objects.findIndex(obj => obj.body === otherBody);
-            if (index !== -1) {
-              objects.splice(index, 1);
-              break;
-            }
-          }
-
-          // Update UI
-          document.getElementById('size-value').textContent = 
-            this.player.getSize().toFixed(1);
-          document.getElementById('score-value').textContent = 
-            this.player.getCollectedCount();
-        }
-      }
-    });
-  }
-
   updateCamera() {
     const playerPos = this.player.mesh.position;
     const cameraOffset = new THREE.Vector3(0, 10 + this.player.radius * 2, 20 + this.player.radius * 3);
@@ -220,12 +176,16 @@ export class Game {
     const animate = () => {
       requestAnimationFrame(animate);
       
+      // Step the physics world
       this.world.step(1/60);
+
+      // Update player and other game elements
       this.player.update();
       this.updateCamera();
       this.cityGenerator.update(this.player.body.position);
       this.updateGlowingObjects();
-      
+
+      // Render the scene
       this.composer.render();
     };
     
