@@ -185,7 +185,7 @@ class Game {
       force.y = -speed;
       isMoving = true;
     }
-    if (this.keys['ArrowDown'] || this.keys['s']) {
+    if (thisartmentkeys['ArrowDown'] || this.keys['s']) {
       force.y = speed;
       isMoving = true;
     }
@@ -287,11 +287,11 @@ class Game {
   updateGlowingObjects() {
     const playerRadius = this.player.radius;
     const playerPosition = this.player.body.position;
+    const glowRange = 15; // Distance within which objects can glow
 
     this.cityGenerator.objects.forEach((objects) => {
       objects.forEach((obj) => {
-        const objectSize =
-          obj.body.shapes[0].radius ||
+        const objectSize = obj.body.shapes[0].radius ||
           Math.max(
             obj.body.shapes[0].halfExtents.x,
             obj.body.shapes[0].halfExtents.y,
@@ -310,7 +310,7 @@ class Game {
           )
         );
 
-        if (objectSize < playerRadius && distance < 10) {
+        if (objectSize < playerRadius * 1.2 && distance < glowRange) {
           if (!obj.mesh.userData.isGlowing) {
             obj.mesh.userData.isGlowing = true;
             obj.mesh.userData.originalMaterial = obj.mesh.material;
