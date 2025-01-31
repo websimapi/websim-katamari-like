@@ -14,18 +14,25 @@ export class PlayerBall {
     this.mesh.castShadow = true;
     scene.add(this.mesh);
 
-    // Create the physics body
-    this.body = new CANNON.Body({
+    // Keep track of attached meshes and their bodies
+    this.attachedMeshes = [];
+
+    // Create the main compound body
+    this.compoundBody = new CANNON.Body({
       mass: 2,
-      shape: new CANNON.Sphere(this.radius),
-      position: new CANNON.Vec3(0, this.radius, 0),
+      type: CANNON.Body.DYNAMIC,
       linearDamping: 0.4,
       angularDamping: 0.4
     });
-    world.addBody(this.body);
 
-    // Keep track of attached meshes and their directions
-    this.attachedMeshes = [];
+    // Add the main sphere shape
+    const sphereShape = new CANNON.Sphere(this.radius);
+    this.compoundBody.addShape(sphereShape);
+    this.compoundBody.position.set(0, this.radius, 0);
+
+    // Replace this.body with this.compoundBody
+    this.body = this.compoundBody;
+    world.addBody(this.body);
 
     // Particle system for boost effect
     this.particleGroup = new THREE.Group();
@@ -123,12 +130,12 @@ export class PlayerBall {
   absorbObject(object) {
     if (!object || object.body.mass === 0) return;
 
-    const objectSize =
-      object.body.shapes[0].radius ||
+    const objectShape = object.body.shapes[0];
+    const objectSize = objectShape.radius || 
       Math.max(
-        object.body.shapes[0].halfExtents.x,
-        object.body.shapes[0].halfExtents.y,
-        object.body.shapes[0].halfExtents.z
+        objectShape.halfExtents.x,
+        objectShape.halfExtents.y,
+        objectShape.halfExtents.z
       );
 
     if (objectSize >= this.radius) return;
@@ -138,7 +145,7 @@ export class PlayerBall {
     this.world.removeBody(object.body);
     this.collectedObjects.push(object);
 
-    // Create and attach the visual representation as a child of the player mesh
+    // Create and attach the visual representation
     const attachedMesh = object.mesh.clone();
 
     // Calculate random direction on the surface of the sphere
@@ -150,50 +157,70 @@ export class PlayerBall {
       Math.cos(theta)
     );
 
-    // Set the position and rotation relative to the player mesh
-    attachedMesh.position.copy(direction.clone().multiplyScalar(this.radius));
-    attachedMesh.quaternion.set(
-      Math.random(),
-      Math.random(),
-      Math.random(),
-      Math.random()
-    ).normalize();
+    // Position relative to the player mesh
+    const attachPosition = direction.clone().multiplyScalar(this.radius);
+    attachedMesh.position.copy(attachPosition);
+    attachedMesh.scale.set(0.6, 0.6, 0.6);
 
-    // Scale down the attached object slightly
-    const scale = 0.6;
-    attachedMesh.scale.set(scale, scale, scale);
-
-    // Add the attached mesh as a child of the player mesh
+    // Add the mesh as a child of the player mesh
     this.mesh.add(attachedMesh);
+
+    // Create a physics shape for the attached object
+    let attachedShape;
+    const scale = 0.6; // Match the visual scale
+
+    if (objectShape instanceof CANNON.Sphere) {
+      attachedShape = new CANNON.Sphere(objectShape.radius * scale);
+    } else if (objectShape instanceof CANNON.Box) {
+      attachedShape = new CANNON.Box(new CANNON.Vec3(
+        objectShape.halfExtents.x * scale,
+        objectShape.halfExtents.y * scale,
+        objectShape.halfExtents.z * scale
+      ));
+    }
+
+    // Calculate the offset in world coordinates
+    const offset = new CANNON.Vec3(
+      attachPosition.x,
+      attachPosition.y,
+      attachPosition.z
+    );
+
+    // Add the shape to the compound body with the calculated offset
+    this.body.addShape(attachedShape, offset);
+
+    // Update the body's mass and inertia
+    const newMass = this.body.mass + (object.body.mass * 0.6); // Scale mass like we scaled size
+    this.body.mass = newMass;
+    this.body.updateMassProperties();
 
     // Keep track of the attached mesh and its direction
     this.attachedMeshes.push({
       mesh: attachedMesh,
-      direction: direction
+      direction: direction,
+      shape: attachedShape,
+      offset: offset
     });
 
-    // Calculate new size based on combined volume
+    // Calculate new core size based on combined volume
     const objectVolume = (4 / 3) * Math.PI * Math.pow(objectSize, 3);
     const currentVolume = (4 / 3) * Math.PI * Math.pow(this.radius, 3);
     const newVolume = currentVolume + objectVolume;
     const newRadius = Math.pow((3 * newVolume) / (4 * Math.PI), 1 / 3);
 
-    // Update physics body
+    // Update core radius
     this.radius = newRadius;
-    this.body.shapes = [];
-    this.body.addShape(new CANNON.Sphere(this.radius));
-    this.body.mass += object.body.mass;
-    this.body.updateMassProperties();
-    this.body.aabbNeedsUpdate = true;
+    this.body.shapes[0].radius = this.radius;
 
-    // Update visual mesh
+    // Update visual mesh for the core sphere
     const newGeometry = new THREE.SphereGeometry(this.radius, 32, 32);
     this.mesh.geometry.dispose();
     this.mesh.geometry = newGeometry;
 
-    // Reposition attached meshes based on new radius
+    // Reposition attached meshes based on new radius while maintaining their relative positions
     this.attachedMeshes.forEach(attached => {
-      attached.mesh.position.copy(attached.direction.clone().multiplyScalar(this.radius));
+      const newPos = attached.direction.clone().multiplyScalar(this.radius);
+      attached.mesh.position.copy(newPos);
     });
   }
 
