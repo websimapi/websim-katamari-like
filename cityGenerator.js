@@ -5,8 +5,8 @@ export class CityGenerator {
     this.chunkSize = 100;
     this.loadedChunks = new Set();
     this.objects = new Map();
-    this.minObjectSize = 0.2; // Minimum size for collectibles
-    this.maxObjectSize = 8;   // Maximum size for buildings
+    this.minObjectSize = 0.2;   // Minimum size for collectibles
+    this.maxObjectSize = 15;    // Maximum size for buildings
   }
 
   update(playerPosition) {
@@ -61,10 +61,10 @@ export class CityGenerator {
     const objects = [];
     
     // Generate tiny collectibles (leaves, papers, etc)
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 50; i++) {  
       const x = (chunk.x * this.chunkSize) + Math.random() * this.chunkSize;
       const z = (chunk.z * this.chunkSize) + Math.random() * this.chunkSize;
-      const size = this.minObjectSize + Math.random() * 0.3; // 0.2 to 0.5
+      const size = this.minObjectSize + Math.random() * 0.3;
       
       const geometry = new THREE.SphereGeometry(size, 8, 8);
       const material = new THREE.MeshPhongMaterial({ 
@@ -86,10 +86,10 @@ export class CityGenerator {
     }
 
     // Generate medium collectibles (trash bins, boxes, etc)
-    for (let i = 0; i < 15; i++) {
+    for (let i = 0; i < 25; i++) {  
       const x = (chunk.x * this.chunkSize) + Math.random() * this.chunkSize;
       const z = (chunk.z * this.chunkSize) + Math.random() * this.chunkSize;
-      const size = 0.5 + Math.random() * 1; // 0.5 to 1.5
+      const size = 0.5 + Math.random() * 2; 
       
       const geometry = new THREE.BoxGeometry(size, size, size);
       const material = new THREE.MeshPhongMaterial({ color: this.getRandomColor() });
@@ -107,13 +107,39 @@ export class CityGenerator {
 
       objects.push({ mesh, body });
     }
-    
-    // Generate buildings of varying sizes
-    for (let i = 0; i < 8; i++) {
+
+    // Generate large objects (cars, small structures)
+    for (let i = 0; i < 10; i++) {
       const x = (chunk.x * this.chunkSize) + Math.random() * this.chunkSize;
       const z = (chunk.z * this.chunkSize) + Math.random() * this.chunkSize;
-      const width = 2 + Math.random() * 4; // 2 to 6
-      const height = 4 + Math.random() * 12; // 4 to 16
+      const size = 2 + Math.random() * 3; 
+      
+      const geometry = new THREE.BoxGeometry(size * 2, size, size * 1.5);
+      const material = new THREE.MeshPhongMaterial({ 
+        color: this.getRandomColor(),
+        flatShading: true
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, size/2, z);
+      this.scene.add(mesh);
+
+      const shape = new CANNON.Box(new CANNON.Vec3(size, size/2, size * 0.75));
+      const body = new CANNON.Body({
+        mass: size * 10,
+        shape: shape,
+        position: new CANNON.Vec3(x, size/2, z)
+      });
+      this.world.addBody(body);
+
+      objects.push({ mesh, body });
+    }
+    
+    // Generate buildings of varying sizes
+    for (let i = 0; i < 12; i++) {  
+      const x = (chunk.x * this.chunkSize) + Math.random() * this.chunkSize;
+      const z = (chunk.z * this.chunkSize) + Math.random() * this.chunkSize;
+      const width = 3 + Math.random() * 5;   
+      const height = 6 + Math.random() * 14;  
       
       const geometry = new THREE.BoxGeometry(width, height, width);
       const material = new THREE.MeshPhongMaterial({ 
@@ -126,7 +152,7 @@ export class CityGenerator {
 
       const shape = new CANNON.Box(new CANNON.Vec3(width/2, height/2, width/2));
       const body = new CANNON.Body({
-        mass: width * height * 2, // Mass proportional to volume
+        mass: width * height * 2,
         shape: shape,
         position: new CANNON.Vec3(x, height/2, z)
       });
