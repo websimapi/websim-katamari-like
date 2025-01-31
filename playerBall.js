@@ -103,9 +103,10 @@ export class PlayerBall {
     // Update physics body
     this.radius = newRadius;
     this.body.shapes[0].radius = this.radius;
+    this.body.shapes[0].computeBoundingSphereRadius();
     this.body.mass += object.body.mass;
-    this.body.updateBoundingSphereRadius();
     this.body.updateMassProperties();
+    this.body.aabbNeedsUpdate = true;
     
     // Update visual mesh
     const newGeometry = new THREE.SphereGeometry(this.radius, 32, 32);
