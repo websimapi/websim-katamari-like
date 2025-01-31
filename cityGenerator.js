@@ -1,7 +1,8 @@
 export class CityGenerator {
-  constructor(world) {
+  constructor(scene, world) {
+    this.scene = scene;
     this.world = world;
-    this.chunkSize = 1000;
+    this.chunkSize = 100;
     this.loadedChunks = new Set();
     this.objects = new Map();
   }
@@ -12,7 +13,7 @@ export class CityGenerator {
     
     // Generate new chunks
     nearbyChunks.forEach(chunk => {
-      const key = `${chunk.x},${chunk.y}`;
+      const key = `${chunk.x},${chunk.z}`;
       if (!this.loadedChunks.has(key)) {
         this.generateChunk(chunk);
         this.loadedChunks.add(key);
@@ -21,14 +22,14 @@ export class CityGenerator {
 
     // Remove far chunks
     this.loadedChunks.forEach(key => {
-      const [x, y] = key.split(',').map(Number);
+      const [x, z] = key.split(',').map(Number);
       const distance = Math.sqrt(
         Math.pow(x - currentChunk.x, 2) + 
-        Math.pow(y - currentChunk.y, 2)
+        Math.pow(z - currentChunk.z, 2)
       );
       
       if (distance > 2) {
-        this.removeChunk({ x, y });
+        this.removeChunk({ x, z });
         this.loadedChunks.delete(key);
       }
     });
@@ -37,17 +38,17 @@ export class CityGenerator {
   getChunkCoords(position) {
     return {
       x: Math.floor(position.x / this.chunkSize),
-      y: Math.floor(position.y / this.chunkSize)
+      z: Math.floor(position.z / this.chunkSize)
     };
   }
 
   getNearbyChunks(chunk) {
     const nearby = [];
     for (let dx = -1; dx <= 1; dx++) {
-      for (let dy = -1; dy <= 1; dy++) {
+      for (let dz = -1; dz <= 1; dz++) {
         nearby.push({
           x: chunk.x + dx,
-          y: chunk.y + dy
+          z: chunk.z + dz
         });
       }
     }
@@ -56,56 +57,73 @@ export class CityGenerator {
 
   generateChunk(chunk) {
     const objects = [];
-    const chunkObjects = [];
     
     // Generate buildings
     for (let i = 0; i < 10; i++) {
       const x = (chunk.x * this.chunkSize) + Math.random() * this.chunkSize;
-      const y = (chunk.y * this.chunkSize) + Math.random() * this.chunkSize;
-      const size = 20 + Math.random() * 60;
+      const z = (chunk.z * this.chunkSize) + Math.random() * this.chunkSize;
+      const size = 2 + Math.random() * 6;
+      const height = 5 + Math.random() * 20;
       
-      const building = Matter.Bodies.rectangle(x, y, size, size, {
-        isStatic: true,
-        render: {
-          fillStyle: '#808080'
-        }
+      // Three.js geometry
+      const geometry = new THREE.BoxGeometry(size, height, size);
+      const material = new THREE.MeshPhongMaterial({ color: 0x808080 });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, height/2, z);
+      this.scene.add(mesh);
+
+      // Cannon.js body
+      const shape = new CANNON.Box(new CANNON.Vec3(size/2, height/2, size/2));
+      const body = new CANNON.Body({
+        mass: 0,
+        shape: shape,
+        position: new CANNON.Vec3(x, height/2, z)
       });
-      
-      objects.push(building);
-      chunkObjects.push(building);
+      this.world.addBody(body);
+
+      objects.push({ mesh, body });
     }
 
     // Generate collectibles
     for (let i = 0; i < 20; i++) {
       const x = (chunk.x * this.chunkSize) + Math.random() * this.chunkSize;
-      const y = (chunk.y * this.chunkSize) + Math.random() * this.chunkSize;
-      const size = 5 + Math.random() * 15;
+      const z = (chunk.z * this.chunkSize) + Math.random() * this.chunkSize;
+      const size = 0.5 + Math.random() * 1.5;
       
-      const collectible = Matter.Bodies.circle(x, y, size, {
-        render: {
-          fillStyle: this.getRandomColor()
-        }
+      const geometry = new THREE.SphereGeometry(size, 16, 16);
+      const material = new THREE.MeshPhongMaterial({ color: this.getRandomColor() });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, size, z);
+      this.scene.add(mesh);
+
+      const shape = new CANNON.Sphere(size);
+      const body = new CANNON.Body({
+        mass: size * 5,
+        shape: shape,
+        position: new CANNON.Vec3(x, size, z)
       });
-      
-      objects.push(collectible);
-      chunkObjects.push(collectible);
+      this.world.addBody(body);
+
+      objects.push({ mesh, body });
     }
 
-    Matter.World.add(this.world, objects);
-    this.objects.set(`${chunk.x},${chunk.y}`, chunkObjects);
+    this.objects.set(`${chunk.x},${chunk.z}`, objects);
   }
 
   removeChunk(chunk) {
-    const key = `${chunk.x},${chunk.y}`;
+    const key = `${chunk.x},${chunk.z}`;
     const objects = this.objects.get(key);
     if (objects) {
-      Matter.World.remove(this.world, objects);
+      objects.forEach(obj => {
+        this.scene.remove(obj.mesh);
+        this.world.remove(obj.body);
+      });
       this.objects.delete(key);
     }
   }
 
   getRandomColor() {
-    const colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF'];
+    const colors = [0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF, 0x00FFFF];
     return colors[Math.floor(Math.random() * colors.length)];
   }
 }
