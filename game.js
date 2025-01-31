@@ -197,7 +197,8 @@ class Game {
     const vector = data.vector;
 
     // Ignore small movements
-    if (vector.length() < 0.5) return;
+    const magnitude = Math.sqrt(vector.x * vector.x + vector.y * vector.y);
+    if (magnitude < 0.5) return;
 
     // Determine the primary direction
     const angle = data.angle.degree;
