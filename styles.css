@@ -43,24 +43,3 @@ body {
   background: rgba(255,255,255,0.2);
   border-radius: 50%;
 }
-
-#start-prompt {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: white;
-  font-family: Arial, sans-serif;
-  font-size: 24px;
-  text-shadow: 2px 2px 2px rgba(0,0,0,0.5);
-  background: rgba(0,0,0,0.5);
-  padding: 20px;
-  border-radius: 10px;
-  pointer-events: none;
-  opacity: 1;
-  transition: opacity 0.5s;
-}
-
-#start-prompt.hidden {
-  opacity: 0;
-}

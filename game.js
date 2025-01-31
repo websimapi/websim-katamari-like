@@ -3,9 +3,6 @@ import { PlayerBall } from './playerBall.js';
 
 class Game {
   constructor() {
-    this.started = false;
-    this.setupAudio();
-    
     // Create camera first
     this.camera = new THREE.PerspectiveCamera(
       75,
@@ -28,29 +25,7 @@ class Game {
     
     this.setupControls();
     this.setupCollisions();
-    this.setupStartHandler();
-  }
-
-  setupAudio() {
-    this.bgMusic = document.getElementById('bgMusic');
-  }
-
-  setupStartHandler() {
-    const startPrompt = document.getElementById('start-prompt');
-    
-    const startGame = () => {
-      if (!this.started) {
-        this.started = true;
-        this.bgMusic.play();
-        startPrompt.classList.add('hidden');
-        this.start();
-        document.removeEventListener('touchstart', startGame);
-        document.removeEventListener('mousedown', startGame);
-      }
-    };
-
-    document.addEventListener('touchstart', startGame);
-    document.addEventListener('mousedown', startGame);
+    this.start();
   }
 
   setupScene() {
