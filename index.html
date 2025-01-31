@@ -6,14 +6,7 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div id="start-screen">
-    <button id="start-button">Start Game</button>
-    <audio id="background-music" loop>
-      <source src="path/to/your/audio.mp3" type="audio/mpeg">
-      Your browser does not support the audio element.
-    </audio>
-  </div>
-  <div id="game-container" style="display: none;">
+  <div id="game-container">
     <canvas id="gameCanvas"></canvas>
     <div id="ui">
       <div id="size">Size: <span id="size-value">1.0</span>m</div>
@@ -40,19 +33,8 @@
   <script src="https://cdn.jsdelivr.net/npm/cannon@0.6.2/build/cannon.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.10.1/dist/nipplejs.min.js"></script>
 
-  <script type="module">
-    import { Game } from './game.js';
-
-    document.getElementById('start-button').addEventListener('click', () => {
-      document.getElementById('start-screen').style.display = 'none';
-      document.getElementById('game-container').style.display = 'block';
-     !function(){
-        const music = document.getElementById('background-music');
-        music.play();
-        new Game();
-      }();
-    });
-  </script>
+  <!-- Load game code -->
+  <script type="module" src="game.js"></script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>

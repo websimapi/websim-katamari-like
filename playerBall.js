@@ -1,8 +1,7 @@
 export class PlayerBall {
-  constructor(scene, world, cityGenerator) {
+  constructor(scene, world) {
     this.scene = scene;
     this.world = world;
-    this.cityGenerator = cityGenerator;
     this.collectedObjects = [];
     this.radius = 0.5; 
     this.mesh = new THREE.Mesh(
@@ -23,9 +22,6 @@ export class PlayerBall {
 
     // Keep track of attached meshes and their directions
     this.attachedMeshes = [];
-
-    // Bind collision event handler
-    this.body.addEventListener('collide', this.handleCollision.bind(this));
   }
 
   update() {
@@ -41,47 +37,6 @@ export class PlayerBall {
       force.y / (this.body.mass * 0.5)
     );
     this.body.applyImpulse(scaledForce, this.body.position);
-  }
-
-  handleCollision(event) {
-    const otherBody = event.body;
-
-    // Skip if other body is the ground (mass === 0)
-    if (otherBody.mass === 0) return;
-
-    // Find the object that corresponds to this physics body
-    const object = Array.from(this.cityGenerator.objects.values())
-      .flat()
-      .find(obj => obj.body === otherBody);
-    
-    if (object) {
-      const objectSize = object.body.shapes[0].radius || 
-                       Math.max(
-                         object.body.shapes[0].halfExtents.x,
-                         object.body.shapes[0].halfExtents.y,
-                         object.body.shapes[0].halfExtents.z
-                       );
-      
-      // Only absorb if the object is smaller than the player
-      if (objectSize < this.radius) {
-        this.absorbObject(object);
-
-        // Remove the object from the city generator's records
-        for (let [key, objects] of this.cityGenerator.objects.entries()) {
-          const index = objects.findIndex(obj => obj.body === otherBody);
-          if (index !== -1) {
-            objects.splice(index, 1);
-            break;
-          }
-        }
-
-        // Update UI
-        document.getElementById('size-value').textContent = 
-          this.getSize().toFixed(1);
-        document.getElementById('score-value').textContent = 
-          this.getCollectedCount();
-      }
-    }
   }
 
   absorbObject(object) {
@@ -138,29 +93,13 @@ export class PlayerBall {
     const newVolume = currentVolume + objectVolume;
     const newRadius = Math.pow((3 * newVolume) / (4 * Math.PI), 1 / 3);
 
-    // Store current physics properties
-    const position = this.body.position.clone();
-    const velocity = this.body.velocity.clone();
-    const angularVelocity = this.body.angularVelocity.clone();
-
-    // Remove old body
-    this.world.removeBody(this.body);
-
-    // Create new body with updated radius and mass
+    // Update physics body
     this.radius = newRadius;
-    this.body = new CANNON.Body({
-      mass: this.body.mass + object.body.mass,
-      shape: new CANNON.Sphere(this.radius),
-      position: position,
-      linearDamping: 0.4,
-      angularDamping: 0.4
-    });
-    this.body.velocity.copy(velocity);
-    this.body.angularVelocity.copy(angularVelocity);
-    this.world.addBody(this.body);
-
-    // Reattach collision handler
-    this.body.addEventListener('collide', this.handleCollision.bind(this));
+    this.body.shapes = [];
+    this.body.addShape(new CANNON.Sphere(this.radius));
+    this.body.mass += object.body.mass;
+    this.body.updateMassProperties();
+    this.body.aabbNeedsUpdate = true;
 
     // Update visual mesh
     const newGeometry = new THREE.SphereGeometry(this.radius, 32, 32);

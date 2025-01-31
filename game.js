@@ -1,7 +1,7 @@
 import { CityGenerator } from './cityGenerator.js';
 import { PlayerBall } from './playerBall.js';
 
-export class Game {
+class Game {
   constructor() {
     // Create camera first
     this.camera = new THREE.PerspectiveCamera(
@@ -16,33 +16,52 @@ export class Game {
     this.setupScene();
     this.setupPhysics();
     this.setupLights();
-    
+
     this.cityGenerator = new CityGenerator(this.scene, this.world);
-    this.player = new PlayerBall(this.scene, this.world, this.cityGenerator);
-    
+    this.player = new PlayerBall(this.scene, this.world);
+
     // Add ground
     this.addGround();
-    
+
     this.setupControls();
+    this.setupCollisions();
+
+    // Load the audio file
+    this.audio = new Audio('Electric Dreamers - Track 2 - Sonauto (2).wav');
+    this.audio.loop = true;
+    this.audioPlayed = false;
+
+    // Play audio on first tap of screen
+    window.addEventListener(
+      'pointerdown',
+      () => {
+        if (!this.audioPlayed) {
+          this.audio.play();
+          this.audioPlayed = true;
+        }
+      },
+      { once: true }
+    );
+
     this.start();
   }
 
   setupScene() {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x87CEEB);
-    
+    this.scene.background = new THREE.Color(0x87ceeb);
+
     this.renderer = new THREE.WebGLRenderer({
       canvas: document.getElementById('gameCanvas'),
       antialias: true
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(window.devicePixelRatio);
-    
+
     // Add post-processing for bloom effect
     this.composer = new THREE.EffectComposer(this.renderer);
     this.renderPass = new THREE.RenderPass(this.scene, this.camera);
     this.composer.addPass(this.renderPass);
-    
+
     this.bloomPass = new THREE.UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
       1.5, // strength
@@ -71,14 +90,12 @@ export class Game {
   }
 
   addGround() {
-    // Three.js ground
     const groundGeometry = new THREE.PlaneGeometry(1000, 1000);
     const groundMaterial = new THREE.MeshPhongMaterial({ color: 0x999999 });
     const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
     groundMesh.rotation.x = -Math.PI / 2;
     this.scene.add(groundMesh);
 
-    // Cannon.js ground
     const groundShape = new CANNON.Plane();
     const groundBody = new CANNON.Body({
       mass: 0,
@@ -110,21 +127,72 @@ export class Game {
     window.addEventListener('keydown', (e) => {
       const force = { x: 0, y: 0 };
       const speed = 5;
-      
-      switch(e.key) {
-        case 'ArrowUp': force.y = -speed; break;
-        case 'ArrowDown': force.y = speed; break;
-        case 'ArrowLeft': force.x = -speed; break;
-        case 'ArrowRight': force.x = speed; break;
+
+      switch (e.key) {
+        case 'ArrowUp':
+          force.y = -speed;
+          break;
+        case 'ArrowDown':
+          force.y = speed;
+          break;
+        case 'ArrowLeft':
+          force.x = -speed;
+          break;
+        case 'ArrowRight':
+          force.x = speed;
+          break;
       }
-      
+
       this.player.applyForce(force);
+    });
+  }
+
+  setupCollisions() {
+    this.player.body.addEventListener('collide', (event) => {
+      const otherBody = event.body;
+
+      if (otherBody.mass === 0) return;
+
+      const object = Array.from(this.cityGenerator.objects.values())
+        .flat()
+        .find((obj) => obj.body === otherBody);
+
+      if (object) {
+        const objectSize =
+          object.body.shapes[0].radius ||
+          Math.max(
+            object.body.shapes[0].halfExtents.x,
+            object.body.shapes[0].halfExtents.y,
+            object.body.shapes[0].halfExtents.z
+          );
+
+        if (objectSize < this.player.radius) {
+          this.player.absorbObject(object);
+
+          for (let [key, objects] of this.cityGenerator.objects.entries()) {
+            const index = objects.findIndex((obj) => obj.body === otherBody);
+            if (index !== -1) {
+              objects.splice(index, 1);
+              break;
+            }
+          }
+
+          document.getElementById('size-value').textContent =
+            this.player.getSize().toFixed(1);
+          document.getElementById('score-value').textContent =
+            this.player.getCollectedCount();
+        }
+      }
     });
   }
 
   updateCamera() {
     const playerPos = this.player.mesh.position;
-    const cameraOffset = new THREE.Vector3(0, 10 + this.player.radius * 2, 20 + this.player.radius * 3);
+    const cameraOffset = new THREE.Vector3(
+      0,
+      10 + this.player.radius * 2,
+      20 + this.player.radius * 3
+    );
     this.camera.position.copy(playerPos).add(cameraOffset);
     this.camera.lookAt(playerPos);
   }
@@ -133,27 +201,28 @@ export class Game {
     const playerRadius = this.player.radius;
     const playerPosition = this.player.body.position;
 
-    // Update all objects in loaded chunks
     this.cityGenerator.objects.forEach((objects) => {
       objects.forEach((obj) => {
-        const objectSize = obj.body.shapes[0].radius || 
-                         Math.max(
-                           obj.body.shapes[0].halfExtents.x,
-                           obj.body.shapes[0].halfExtents.y,
-                           obj.body.shapes[0].halfExtents.z
-                         );
-        
+        const objectSize =
+          obj.body.shapes[0].radius ||
+          Math.max(
+            obj.body.shapes[0].halfExtents.x,
+            obj.body.shapes[0].halfExtents.y,
+            obj.body.shapes[0].halfExtents.z
+          );
+
         const distance = new THREE.Vector3(
           obj.body.position.x,
           obj.body.position.y,
           obj.body.position.z
-        ).distanceTo(new THREE.Vector3(
-          playerPosition.x,
-          playerPosition.y,
-          playerPosition.z
-        ));
+        ).distanceTo(
+          new THREE.Vector3(
+            playerPosition.x,
+            playerPosition.y,
+            playerPosition.z
+          )
+        );
 
-        // If object is smaller than player and within range
         if (objectSize < playerRadius && distance < 10) {
           if (!obj.mesh.userData.isGlowing) {
             obj.mesh.userData.isGlowing = true;
@@ -175,20 +244,18 @@ export class Game {
   start() {
     const animate = () => {
       requestAnimationFrame(animate);
-      
-      // Step the physics world
-      this.world.step(1/60);
 
-      // Update player and other game elements
+      this.world.step(1 / 60);
       this.player.update();
       this.updateCamera();
       this.cityGenerator.update(this.player.body.position);
       this.updateGlowingObjects();
 
-      // Render the scene
       this.composer.render();
     };
-    
+
     animate();
   }
 }
+
+new Game();
