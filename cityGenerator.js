@@ -63,11 +63,22 @@ export class CityGenerator {
     
     // Function to check if a position is too close to existing objects
     const isSpaceOccupied = (x, z, size) => {
-      const key = `${Math.round(x/size)},${Math.round(z/size)}`;
-      if (occupiedSpaces.has(key)) return true;
+      // Check in a grid around the object based on its size
+      const gridSize = Math.ceil(size);
+      for (let dx = -gridSize; dx <= gridSize; dx++) {
+        for (let dz = -gridSize; dz <= gridSize; dz++) {
+          const key = `${Math.round((x + dx)/2)},${Math.round((z + dz)/2)}`;
+          if (occupiedSpaces.has(key)) return true;
+        }
+      }
       
-      // Add buffer zone around position
-      occupiedSpaces.add(key);
+      // If space is free, mark it as occupied
+      for (let dx = -gridSize; dx <= gridSize; dx++) {
+        for (let dz = -gridSize; dz <= gridSize; dz++) {
+          const key = `${Math.round((x + dx)/2)},${Math.round((z + dz)/2)}`;
+          occupiedSpaces.add(key);
+        }
+      }
       return false;
     };
 
@@ -76,8 +87,8 @@ export class CityGenerator {
       let attempts = 0;
       let x, z;
       do {
-        x = (chunk.x * this.chunkSize) + Math.random() * this.chunkSize;
-        z = (chunk.z * this.chunkSize) + Math.random() * this.chunkSize;
+        x = (chunk.x * this.chunkSize) + (size * 2) + Math.random() * (this.chunkSize - size * 4);
+        z = (chunk.z * this.chunkSize) + (size * 2) + Math.random() * (this.chunkSize - size * 4);
         attempts++;
       } while (isSpaceOccupied(x, z, size) && attempts < 50);
       
