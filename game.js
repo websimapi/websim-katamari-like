@@ -132,16 +132,29 @@ class Game {
       const bodyA = event.bodyA;
       const bodyB = event.bodyB;
       
+      // Skip if either body is the ground
+      if (bodyA.mass === 0 || bodyB.mass === 0) return;
+      
       if (bodyA === this.player.body || bodyB === this.player.body) {
         const otherBody = bodyA === this.player.body ? bodyB : bodyA;
         
-        if (otherBody.mass > 0 && otherBody.shapes[0].radius < this.player.radius) {
-          const object = Array.from(this.cityGenerator.objects.values())
-            .flat()
-            .find(obj => obj.body === otherBody);
-            
-          if (object) {
+        // Find the object that corresponds to this physics body
+        const object = Array.from(this.cityGenerator.objects.values())
+          .flat()
+          .find(obj => obj.body === otherBody);
+          
+        if (object) {
+          const objectSize = object.body.shapes[0].radius || 
+                           Math.max(
+                             object.body.shapes[0].halfExtents.x,
+                             object.body.shapes[0].halfExtents.y,
+                             object.body.shapes[0].halfExtents.z
+                           );
+          
+          // Only absorb if the object is smaller than the player
+          if (objectSize < this.player.radius) {
             this.player.absorbObject(object);
+            // Update UI
             document.getElementById('size-value').textContent = 
               this.player.getSize().toFixed(1);
             document.getElementById('score-value').textContent = 

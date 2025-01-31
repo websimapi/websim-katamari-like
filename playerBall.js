@@ -48,7 +48,7 @@ export class PlayerBall {
   }
 
   absorbObject(object) {
-    if (object.body.mass === 0) return;
+    if (!object || object.body.mass === 0) return;
     
     const objectSize = object.body.shapes[0].radius || 
                       Math.max(
@@ -59,12 +59,15 @@ export class PlayerBall {
                       
     if (objectSize >= this.radius) return;
 
+    // Remove the original object from the scene and physics world
     this.scene.remove(object.mesh);
-    this.world.remove(object.body);
+    this.world.removeBody(object.body);
     this.collectedObjects.push(object);
     
+    // Create and attach the visual representation
     const attachedMesh = object.mesh.clone();
     
+    // Calculate random position on the surface of the ball
     const phi = Math.random() * Math.PI * 2;
     const theta = Math.random() * Math.PI;
     const offset = new THREE.Vector3(
@@ -80,6 +83,7 @@ export class PlayerBall {
         Math.random() * Math.PI * 2
       ));
 
+    // Scale down the attached object slightly
     const scale = 0.6;
     attachedMesh.scale.set(scale, scale, scale);
     
@@ -90,19 +94,28 @@ export class PlayerBall {
       relativeRotation: relativeRotation
     });
     
-    const growthFactor = 0.2; 
-    const objectVolume = object.body.mass;
-    const currentVolume = this.body.mass;
-    this.radius *= (1 + (objectVolume / currentVolume) * growthFactor);
+    // Calculate new size based on volume
+    const objectVolume = (4/3) * Math.PI * Math.pow(objectSize, 3);
+    const currentVolume = (4/3) * Math.PI * Math.pow(this.radius, 3);
+    const newVolume = currentVolume + objectVolume;
+    const newRadius = Math.pow((3 * newVolume) / (4 * Math.PI), 1/3);
     
+    // Update physics body
+    this.radius = newRadius;
     this.body.shapes[0].radius = this.radius;
     this.body.mass += object.body.mass;
     this.body.updateBoundingSphereRadius();
     this.body.updateMassProperties();
     
+    // Update visual mesh
     const newGeometry = new THREE.SphereGeometry(this.radius, 32, 32);
     this.mesh.geometry.dispose();
     this.mesh.geometry = newGeometry;
+
+    // Reposition attached meshes based on new radius
+    this.attachedMeshes.forEach(attached => {
+      attached.offset.normalize().multiplyScalar(this.radius);
+    });
   }
 
   getSize() {
