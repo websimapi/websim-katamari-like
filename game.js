@@ -4,34 +4,34 @@ import { PickupPreview } from './pickupPreview.js';
 
 class Game {
   constructor() {
-    // Set up scene first
-    this.setupScene();
+    // Game state: "TITLE" for demo mode, "PLAY" for actual gameplay
+    this.gameState = "TITLE";
     
-    // Initialize camera after scene
+    // Setup camera
     this.camera = new THREE.PerspectiveCamera(
       75,
       window.innerWidth / window.innerHeight,
       0.1,
       1000
     );
-    this.camera.position.set(0, 10, 20);
-    this.camera.lookAt(0, 0, 0);
+    // Initial camera position for title screen demo
+    this.camera.position.set(0, 20, 40);
 
-    // Initialize physics after scene
+    this.setupScene();
     this.setupPhysics();
     this.setupLights();
 
-    // Initialize game objects after scene and physics
+    // Create the city and player
     this.cityGenerator = new CityGenerator(this.scene, this.world);
     this.player = new PlayerBall(this.scene, this.world);
 
     // Add ground
     this.addGround();
 
-    // Initialize controls and collisions
     this.setupControls();
     this.setupCollisions();
 
+    // Joystick input tracking
     this.joystickMovements = [];
 
     // Load the audio file
@@ -50,73 +50,86 @@ class Game {
       { once: true }
     );
 
-    // Initialize timing variables
+    // Optimization: detect device memory and set optimal pixel ratio
+    const deviceMemory = navigator.deviceMemory || 4;
+    const optimalPixelRatio = deviceMemory <= 2 ? 1 : Math.min(window.devicePixelRatio, 2);
+    this.deviceMemory = deviceMemory;
+    this.renderer.setPixelRatio(optimalPixelRatio);
+
+    // Setup post-processing
+    this.composer = new THREE.EffectComposer(this.renderer);
+    this.renderPass = new THREE.RenderPass(this.scene, this.camera);
+    this.composer.addPass(this.renderPass);
+
+    // Only add bloom if device memory is sufficient
+    if (deviceMemory > 2) {
+      this.bloomPass = new THREE.UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        1.5,
+        0.5,
+        0.85
+      );
+      this.composer.addPass(this.bloomPass);
+    } else {
+      this.bloomPass = null;
+    }
+
     this.clock = new THREE.Clock();
     this.fixedTimeStep = 1.0 / 60.0;
     this.maxSubSteps = 3;
-    this.frame = 0;
-    this.lastFrameTime = 0;
-    this.frameInterval = 1000/60; // Target 60fps
 
-    // Cache vectors
+    this.renderer.shadowMap.enabled = false;
+    
     this._playerPos = new THREE.Vector3();
     this._temp = new THREE.Vector3();
-
-    // Initialize worker if available
-    if (window.Worker) {
-      this.physicsWorker = new Worker('physicsWorker.js');
-      this.physicsWorker.onmessage = (e) => this.updatePhysics(e.data);
-    }
-
-    // Handle window resize
+    
     window.addEventListener('resize', this.onWindowResize.bind(this));
 
-    // Initialize pickup preview
+    // Initialize the pickup preview UI
     this.pickupPreview = new PickupPreview();
 
-    // Start game loop
+    // Demo mode variables for title screen
+    this.demoTimer = 0;
+    this.demoDirection = new THREE.Vector2(0, 0);
+    this.demoOrbitAngle = 0;
+
+    // Setup Title Screen input listener
+    const titleScreenEl = document.getElementById('title-screen');
+    titleScreenEl.addEventListener('pointerdown', () => {
+      // Transition to play mode: hide the title screen overlay
+      titleScreenEl.style.display = 'none';
+      this.gameState = "PLAY";
+      // Optionally reset camera to follow player normally:
+      this.camera.position.set(0, 10 + this.player.radius * 2, 20 + this.player.radius * 3);
+      this.camera.lookAt(this.player.mesh.position);
+    }, { once: true });
+
     this.start();
   }
 
   setupScene() {
-    // Initialize Three.js scene
     this.scene = new THREE.Scene();
-    if (!this.scene) throw new Error('Failed to create scene');
-    
     this.scene.background = new THREE.Color(0x87ceeb);
 
-    // Set up renderer
     this.renderer = new THREE.WebGLRenderer({
       canvas: document.getElementById('gameCanvas'),
       antialias: true
     });
-    if (!this.renderer) throw new Error('Failed to create renderer');
-    
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(1); // Lock to 1 for better performance
-    this.renderer.powerPreference = "high-performance";
-    this.renderer.shadowMap.enabled = false;
+  }
 
-    // Set up post-processing
-    this.composer = new THREE.EffectComposer(this.renderer);
-    if (!this.composer) throw new Error('Failed to create composer');
-    
-    this.renderPass = new THREE.RenderPass(this.scene, this.camera);
-    this.composer.addPass(this.renderPass);
-
-    this.bloomPass = new THREE.UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight),
-      1.0,
-      0.5,
-      0.85
-    );
-    this.bloomPass.resolution = new THREE.Vector2(256, 256);
-    this.composer.addPass(this.bloomPass);
+  onWindowResize() {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(width, height);
+    this.composer.setSize(width, height);
   }
 
   setupPhysics() {
     this.world = new CANNON.World();
-    this.world.gravity.set(0, -20, 0); 
+    this.world.gravity.set(0, -30, 0); // Slightly stronger gravity for realism
     this.world.broadphase = new CANNON.NaiveBroadphase();
     this.world.solver.iterations = 10;
     this.world.defaultContactMaterial.friction = 0.5;
@@ -152,6 +165,7 @@ class Game {
   }
 
   setupControls() {
+    // Setup joystick controls for mobile and keyboard for desktop ONLY in PLAY mode.
     this.joystick = nipplejs.create({
       zone: document.getElementById('joystick-area'),
       mode: 'static',
@@ -160,6 +174,8 @@ class Game {
     });
 
     this.joystick.on('move', (evt, data) => {
+      // Only process input if in PLAY mode
+      if (this.gameState !== "PLAY") return;
       const maxForce = 5;
       const force = {
         x: data.vector.x * maxForce,
@@ -191,7 +207,8 @@ class Game {
 
       this.player.applyForce(force);
       if (boost) {
-        this.player.triggerBoost(3000);
+        // Longer boost duration with 5x acceleration during boost
+        this.player.triggerBoost(5000);
       }
     });
 
@@ -203,11 +220,13 @@ class Game {
     this.keyboardMovements = [];
 
     window.addEventListener('keydown', (e) => {
+      if (this.gameState !== "PLAY") return;
       this.keys[e.key] = true;
       this.updateKeyboardControls();
     });
 
     window.addEventListener('keyup', (e) => {
+      if (this.gameState !== "PLAY") return;
       this.keys[e.key] = false;
       this.updateKeyboardControls();
     });
@@ -261,7 +280,7 @@ class Game {
     if (isMoving) {
       this.player.applyForce(force);
       if (boost) {
-        this.player.triggerBoost(3000);
+        this.player.triggerBoost(5000);
       }
     } else {
       this.player.setBoosting(false);
@@ -288,7 +307,7 @@ class Game {
           );
 
         if (objectSize < this.player.radius) {
-          // Create a preview clone and update the pickup UI before absorbing the object
+          // Update the pickup preview UI before absorbing the object
           const previewClone = object.mesh.clone();
           const itemName = object.mesh.userData.itemName || "Collectible";
           this.pickupPreview.update(previewClone, itemName);
@@ -312,143 +331,69 @@ class Game {
     });
   }
 
-  updateCamera() {
-    const playerPos = this.player.mesh.position;
-    const cameraOffset = new THREE.Vector3(
-      0,
-      10 + this.player.radius * 2,
-      20 + this.player.radius * 3
-    );
-    this.camera.position.copy(playerPos).add(cameraOffset);
-    this.camera.lookAt(playerPos);
-  }
-
-  updateGlowingObjects() {
-    const playerRadius = this.player.radius;
-    this._playerPos.copy(this.player.body.position);
-    const glowRange = 10;
-
-    this.cityGenerator.objects.forEach((objects) => {
-      objects.forEach((obj) => {
-        if (!obj.mesh) return;
-        // Only apply glowing to Star Dust items
-        if (!obj.mesh.userData.isStarDust) return;
-
-        this._temp.set(
-          obj.body.position.x,
-          obj.body.position.y,
-          obj.body.position.z
-        );
-        
-        const distance = this._temp.distanceTo(this._playerPos);
-
-        if (distance < glowRange) {
-          if (!obj.mesh.userData.isGlowing) {
-            obj.mesh.userData.isGlowing = true;
-            if (!obj.mesh.userData.emissiveMaterial) {
-              obj.mesh.userData.emissiveMaterial = new THREE.MeshPhongMaterial({
-                color: 0xFFFFFF,
-                emissive: 0xFFFFFF,
-                emissiveIntensity: 0.5
-              });
-              obj.mesh.userData.originalMaterial = obj.mesh.material;
-            }
-            obj.mesh.material = obj.mesh.userData.emissiveMaterial;
-          }
-          // Pulse the glow effect
-          const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.005);
-          obj.mesh.material.emissiveIntensity = pulse;
-        } else if (obj.mesh.userData.isGlowing) {
-          obj.mesh.userData.isGlowing = false;
-          obj.mesh.material = obj.mesh.userData.originalMaterial || obj.mesh.material;
-        }
-      });
-    });
-  }
-
-  onWindowResize() {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    this.camera.aspect = width / height;
-    this.camera.updateProjectionMatrix();
-    this.renderer.setSize(width, height);
-    this.composer.setSize(width, height);
+  updateCamera(delta) {
+    if (this.gameState === "TITLE") {
+      // In demo mode, slowly orbit around the player for an attractive pan effect
+      this.demoOrbitAngle += delta * 0.1;
+      const orbitRadius = 40;
+      const playerPos = this.player.mesh.position;
+      this.camera.position.set(
+        playerPos.x + orbitRadius * Math.cos(this.demoOrbitAngle),
+        playerPos.y + 20,
+        playerPos.z + orbitRadius * Math.sin(this.demoOrbitAngle)
+      );
+      this.camera.lookAt(playerPos);
+    } else {
+      // In play mode, follow the player with an offset
+      const playerPos = this.player.mesh.position;
+      const cameraOffset = new THREE.Vector3(
+        0,
+        10 + this.player.radius * 2,
+        20 + this.player.radius * 3
+      );
+      this.camera.position.copy(playerPos).add(cameraOffset);
+      this.camera.lookAt(playerPos);
+    }
   }
 
   start() {
-    const animate = (timestamp) => {
-      // Ensure we have a valid game state before continuing
-      if (!this.scene || !this.camera || !this.player || !this.cityGenerator) {
-        console.error('Critical game components missing');
-        return;
-      }
-
+    const animate = () => {
       requestAnimationFrame(animate);
+
+      const delta = this.clock.getDelta();
+      this.world.step(this.fixedTimeStep, delta, this.maxSubSteps);
       
-      // Throttle frame rate
-      const elapsed = timestamp - this.lastFrameTime;
-      if (elapsed < this.frameInterval) return;
-      this.lastFrameTime = timestamp - (elapsed % this.frameInterval);
-
-      try {
-        // Update physics
-        if (this.physicsWorker) {
-          this.physicsWorker.postMessage({
-            playerPos: this.player.body.position,
-            deltaTime: elapsed / 1000
-          });
-        } else {
-          const delta = this.clock.getDelta();
-          if (this.world) {
-            this.world.step(this.fixedTimeStep, delta, this.maxSubSteps);
-          }
+      // Demo mode: if on the title screen, auto apply a random force to the ball
+      if (this.gameState === "TITLE") {
+        this.demoTimer += delta;
+        if (this.demoTimer >= 2) {
+          // Choose a new random direction every 2 seconds
+          this.demoDirection.set(Math.random() * 2 - 1, Math.random() * 2 - 1).normalize();
+          this.demoTimer = 0;
         }
-
-        // Essential updates every frame
-        if (this.player) {
-          this.player.update();
-          this.updateCamera();
-        }
-        
-        // Non-essential updates every other frame
-        if (this.frame % 2 === 0) {
-          if (this.cityGenerator && this.player && this.player.body && this.player.body.position) {
-            this.cityGenerator.update(this.player.body.position);
-          }
-          this.updateGlowingObjects();
-        }
-        
-        // Render scene
-        if (this.composer) {
-          this.composer.render();
-        }
-        
-        this.frame++;
-      } catch (error) {
-        console.error('Animation error:', error);
+        this.player.applyForce({ x: this.demoDirection.x * 5, y: this.demoDirection.y * 5 });
       }
+
+      this.player.update();
+      this.updateCamera(delta);
+      
+      // Update chunks every other frame
+      if (this.frame % 2 === 0) {
+        this.cityGenerator.update(this.player.body.position);
+      }
+      
+      // Render using composer if available; otherwise regular renderer
+      if (this.bloomPass) {
+        this.composer.render();
+      } else {
+        this.renderer.render(this.scene, this.camera);
+      }
+      this.frame++;
     };
 
+    this.frame = 0;
     animate();
-  }
-
-  createParticle() {
-    const geometry = new THREE.SphereGeometry(0.1, 4, 4);
-    const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    return new THREE.Mesh(geometry, material);
-  }
-
-  updatePhysics(data) {
-    // Update physics state from worker
-    Object.assign(this.player.body.position, data.playerPos);
-    Object.assign(this.player.body.velocity, data.playerVel);
   }
 }
 
-window.addEventListener('load', () => {
-  try {
-    new Game();
-  } catch (error) {
-    console.error('Failed to initialize game:', error);
-  }
-});
+new Game();
