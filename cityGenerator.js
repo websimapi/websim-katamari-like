@@ -1,86 +1,64 @@
 export class CityGenerator {
-  constructor(scene, world, camera) {
+  constructor(scene, world) {
     this.scene = scene;
     this.world = world;
     this.chunkSize = 100;
     this.loadedChunks = new Set();
     this.objects = new Map();
-    this.minObjectSize = 0.2;   // Minimum size for collectibles
-    this.maxObjectSize = 15;    // Maximum size for buildings
+    this.minObjectSize = 0.2;   
+    this.maxObjectSize = 15;    
     
     // Object pooling
     this.objectPool = new Map();
-    this.initObjectPool();
-    
-    // Frustum culling 
-    this.frustum = new THREE.Frustum();
-    this.projScreenMatrix = new THREE.Matrix4();
-    this.camera = camera;
     
     // Spatial hash grid for faster collision checks
     this.spatialGrid = new Map();
     this.gridSize = 50;
-  }
 
-  initObjectPool() {
-    // Pre-create common geometries
-    this.geometries = {
-      sphere: new THREE.SphereGeometry(1, 8, 8),
-      box: new THREE.BoxGeometry(1, 1, 1),
-      cylinder: new THREE.CylinderGeometry(1, 1, 1, 8)
-    };
-    
-    // Pre-create common materials
-    this.materials = new Map();
-  }
-
-  getMaterial(color) {
-    if (!this.materials.has(color)) {
-      this.materials.set(color, new THREE.MeshPhongMaterial({ 
-        color, 
-        flatShading: true 
-      }));
-    }
-    return this.materials.get(color);
+    // Store last player position to avoid unnecessary updates
+    this.lastPlayerPos = new THREE.Vector3();
+    this.updateThreshold = 10; // Only update when player moves this far
   }
 
   update(playerPosition) {
-    // Update frustum for culling
-    this.frustum.setFromProjectionMatrix(
-      this.projScreenMatrix.multiplyMatrices(
-        this.camera.projectionMatrix, 
-        this.camera.matrixWorldInverse
-      )
-    );
-    
+    // Validate input
+    if (!playerPosition || typeof playerPosition.x === 'undefined' || 
+        typeof playerPosition.y === 'undefined' || 
+        typeof playerPosition.z === 'undefined') {
+      console.warn('Invalid player position:', playerPosition);
+      return;
+    }
+
+    // Check if player has moved enough to warrant an update
+    const tempVec = new THREE.Vector3(playerPosition.x, playerPosition.y, playerPosition.z);
+    if (tempVec.distanceTo(this.lastPlayerPos) < this.updateThreshold) {
+      return;
+    }
+    this.lastPlayerPos.copy(tempVec);
+
     const currentChunk = this.getChunkCoords(playerPosition);
     const nearbyChunks = this.getNearbyChunks(currentChunk);
     
-    // Only load chunks in view frustum
+    // Keep track of chunks we still need
+    const neededChunks = new Set();
+    
     nearbyChunks.forEach(chunk => {
-      if (!this.frustum.containsPoint(new THREE.Vector3(
-        chunk.x * this.chunkSize,
-        0,
-        chunk.z * this.chunkSize
-      ))) return;
-      
       const key = `${chunk.x},${chunk.z}`;
+      neededChunks.add(key);
+      
       if (!this.loadedChunks.has(key)) {
         this.generateChunk(chunk);
         this.loadedChunks.add(key);
       }
     });
 
-    // Remove far chunks
+    // Remove chunks that are no longer needed
     for (let key of this.loadedChunks) {
-      const [x, z] = key.split(',').map(Number);
-      const distance = Math.sqrt(
-        Math.pow(x - currentChunk.x, 2) + 
-        Math.pow(z - currentChunk.z, 2)
-      );
-      
-      if (distance > 2) {
-        this.removeChunk({ x, z });
+      if (!neededChunks.has(key)) {
+        this.removeChunk({ 
+          x: parseInt(key.split(',')[0]), 
+          z: parseInt(key.split(',')[1]) 
+        });
         this.loadedChunks.delete(key);
       }
     }

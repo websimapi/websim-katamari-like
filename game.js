@@ -384,29 +384,40 @@ class Game {
       if (elapsed < this.frameInterval) return;
       this.lastFrameTime = timestamp - (elapsed % this.frameInterval);
 
-      // Update physics on worker if available
-      if (this.physicsWorker) {
-        this.physicsWorker.postMessage({
-          playerPos: this.player.body.position,
-          deltaTime: elapsed / 1000
-        });
-      } else {
-        const delta = this.clock.getDelta();
-        this.world.step(this.fixedTimeStep, delta, this.maxSubSteps);
-      }
+      try {
+        // Update physics on worker if available
+        if (this.physicsWorker) {
+          this.physicsWorker.postMessage({
+            playerPos: this.player.body.position,
+            deltaTime: elapsed / 1000
+          });
+        } else {
+          const delta = this.clock.getDelta();
+          this.world.step(this.fixedTimeStep, delta, this.maxSubSteps);
+        }
 
-      // Only update visible objects
-      this.player.update();
-      this.updateCamera();
-      
-      // Throttle non-essential updates
-      if (this.frame % 2 === 0) {
-        this.cityGenerator.update(this.player.body.position);
-        this.updateGlowingObjects();
+        // Only update visible objects
+        this.player.update();
+        this.updateCamera();
+        
+        // Throttle non-essential updates
+        if (this.frame % 2 === 0) {
+          // Ensure player position is valid before updating city
+          if (this.player && this.player.body && this.player.body.position) {
+            this.cityGenerator.update(this.player.body.position);
+          }
+          this.updateGlowingObjects();
+        }
+        
+        // Ensure scene and camera exist before rendering
+        if (this.scene && this.camera) {
+          this.composer.render();
+        }
+        
+        this.frame++;
+      } catch (error) {
+        console.error('Animation error:', error);
       }
-      
-      this.composer.render();
-      this.frame++;
     };
 
     this.frame = 0;
