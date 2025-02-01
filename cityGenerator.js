@@ -7,14 +7,6 @@ export class CityGenerator {
     this.objects = new Map();
     this.minObjectSize = 0.2;   // Minimum size for collectibles
     this.maxObjectSize = 15;    // Maximum size for buildings
-
-    // Increase tiny collectible count for more small objects spawning nearby
-    this.objectCounts = {
-      tiny: 40,       // increased from 25 to 40 for more spawn density
-      medium: 15,
-      large: 5,
-      buildings: 6
-    };
   }
 
   update(playerPosition) {
@@ -100,8 +92,12 @@ export class CityGenerator {
       return attempts < 50 ? { x, z } : null;
     };
 
-    // Use the updated tiny count from this.objectCounts
-    const objectCounts = this.objectCounts;
+    const objectCounts = {
+      tiny: 25,
+      medium: 15,
+      large: 5,
+      buildings: 6
+    };
 
     const geometryPool = {
       sphere: new THREE.IcosahedronGeometry(1, 0),
@@ -110,15 +106,14 @@ export class CityGenerator {
     };
 
     const materialPool = new Map();
-    const getMaterial = (color, customProps = {}) => {
-      if (!materialPool.has(color + JSON.stringify(customProps))) {
-        materialPool.set(color + JSON.stringify(customProps), new THREE.MeshPhongMaterial({ 
+    const getMaterial = (color) => {
+      if (!materialPool.has(color)) {
+        materialPool.set(color, new THREE.MeshPhongMaterial({ 
           color, 
-          flatShading: true,
-          ...customProps
+          flatShading: true 
         }));
       }
-      return materialPool.get(color + JSON.stringify(customProps));
+      return materialPool.get(color);
     };
 
     const createWindows = (width, height) => {
@@ -138,82 +133,47 @@ export class CityGenerator {
       return windowGroup;
     };
 
-    // Generate tiny collectibles
+    // Generate tiny collectibles (changed from Paper to Star Dust and placed in the sky)
     for (let i = 0; i < objectCounts.tiny; i++) {  
       const size = this.minObjectSize + Math.random() * 0.3;
       const pos = getValidPosition(size);
       if (!pos) continue;
       
       let mesh;
-      // For Paper object: make it look flat and much smaller by using a plane geometry
+      // Determine a random altitude for star dust floating in the air
+      const starAltitude = 20 + Math.random() * 10;
+      
+      // Both variants now become "Star Dust"
       if (Math.random() < 0.5) {
-        const geometry = new THREE.PlaneGeometry(1, 1);
-        // Create a new material with double sided rendering for paper look
-        const material = new THREE.MeshPhongMaterial({ color: 0xFFFFFF, flatShading: true, side: THREE.DoubleSide });
+        const geometry = geometryPool.box.clone();
+        geometry.scale(size * 2, size * 2, size * 2);
+        const material = getMaterial(0xFFFFFF);
         mesh = new THREE.Mesh(geometry, material);
-        // Apply a slight random rotation on the Z axis to add variety
-        mesh.rotation.z = Math.random() * Math.PI;
-        mesh.userData.itemName = "Paper";
-        // Scale it down further than other collectibles to emphasize its small, flat nature
-        mesh.scale.set(size * 0.5, size * 0.5, 1);
+        mesh.rotation.x = Math.random() * Math.PI;
+        mesh.rotation.y = Math.random() * Math.PI;
+        mesh.userData.itemName = "Star Dust";
       } else {
         const geometry = geometryPool.sphere.clone();
         geometry.scale(size, size, size);
         const material = getMaterial(this.getRandomColor());
         mesh = new THREE.Mesh(geometry, material);
-        mesh.userData.itemName = "Crumpled Paper Ball";
+        mesh.userData.itemName = "Star Dust";
       }
-      mesh.position.set(pos.x, size, pos.z);
+      // Position the star dust high in the air instead of on the ground
+      mesh.position.set(pos.x, starAltitude, pos.z);
       this.scene.add(mesh);
 
       const shape = new CANNON.Sphere(size);
       const body = new CANNON.Body({
         mass: size * 2,
         shape: shape,
-        position: new CANNON.Vec3(pos.x, size, pos.z)
+        position: new CANNON.Vec3(pos.x, starAltitude, pos.z)
       });
+      // Increase damping so that the star dust lingers in the air without falling too fast
+      body.linearDamping = 0.9;
       this.world.addBody(body);
 
       objects.push({ mesh, body });
-      
-      // Optionally, spawn additional tiny collectibles nearby for clustering effect
-      if (Math.random() < 0.3) {
-        const clusterCount = 2 + Math.floor(Math.random() * 2); // 2-3 extra in cluster
-        for (let j = 0; j < clusterCount; j++) {
-          const offsetX = pos.x + (Math.random() - 0.5) * size * 4;
-          const offsetZ = pos.z + (Math.random() - 0.5) * size * 4;
-          const clusterPos = { x: offsetX, z: offsetZ };
-          // Ensure cluster positions are valid using a simplified check
-          if (!isSpaceOccupied(offsetX, offsetZ, size)) {
-            let clusterMesh;
-            if (Math.random() < 0.5) {
-              const geometry = new THREE.PlaneGeometry(1, 1);
-              const material = new THREE.MeshPhongMaterial({ color: 0xFFFFFF, flatShading: true, side: THREE.DoubleSide });
-              clusterMesh = new THREE.Mesh(geometry, material);
-              clusterMesh.rotation.z = Math.random() * Math.PI;
-              clusterMesh.userData.itemName = "Paper";
-              clusterMesh.scale.set(size * 0.5, size * 0.5, 1);
-            } else {
-              const geometry = geometryPool.sphere.clone();
-              geometry.scale(size, size, size);
-              const material = getMaterial(this.getRandomColor());
-              clusterMesh = new THREE.Mesh(geometry, material);
-              clusterMesh.userData.itemName = "Crumpled Paper Ball";
-            }
-            clusterMesh.position.set(clusterPos.x, size, clusterPos.z);
-            this.scene.add(clusterMesh);
-
-            const clusterShape = new CANNON.Sphere(size);
-            const clusterBody = new CANNON.Body({
-              mass: size * 2,
-              shape: clusterShape,
-              position: new CANNON.Vec3(clusterPos.x, size, clusterPos.z)
-            });
-            this.world.addBody(clusterBody);
-            objects.push({ mesh: clusterMesh, body: clusterBody });
-          }
-        }
-      }
     }
 
     // Generate medium collectibles
