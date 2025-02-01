@@ -56,23 +56,7 @@ class Game {
     this.deviceMemory = deviceMemory;
     this.renderer.setPixelRatio(optimalPixelRatio);
 
-    // Setup post-processing
-    this.composer = new THREE.EffectComposer(this.renderer);
-    this.renderPass = new THREE.RenderPass(this.scene, this.camera);
-    this.composer.addPass(this.renderPass);
-
-    // Only add bloom if device memory is sufficient
-    if (deviceMemory > 2) {
-      this.bloomPass = new THREE.UnrealBloomPass(
-        new THREE.Vector2(window.innerWidth, window.innerHeight),
-        1.5,
-        0.5,
-        0.85
-      );
-      this.composer.addPass(this.bloomPass);
-    } else {
-      this.bloomPass = null;
-    }
+    // Remove Glow effect: No bloom or composer is used anymore
 
     this.clock = new THREE.Clock();
     this.fixedTimeStep = 1.0 / 60.0;
@@ -124,7 +108,6 @@ class Game {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
-    this.composer.setSize(width, height);
   }
 
   setupPhysics() {
@@ -293,9 +276,12 @@ class Game {
 
       if (otherBody.mass === 0) return;
 
-      const object = Array.from(this.cityGenerator.objects.values())
-        .flat()
-        .find((obj) => obj.body === otherBody);
+      // Only check ground objects for collision with the player.
+      const groundObjects = [];
+      this.cityGenerator.objects.forEach(chunkData => {
+        groundObjects.push(...chunkData.ground);
+      });
+      const object = groundObjects.find((obj) => obj.body === otherBody);
 
       if (object) {
         const objectSize =
@@ -314,13 +300,13 @@ class Game {
 
           this.player.absorbObject(object);
 
-          for (let [key, objects] of this.cityGenerator.objects.entries()) {
-            const index = objects.findIndex((obj) => obj.body === otherBody);
+          // Remove object from the chunk's ground objects array
+          this.cityGenerator.objects.forEach(chunkData => {
+            const index = chunkData.ground.findIndex((obj) => obj.body === otherBody);
             if (index !== -1) {
-              objects.splice(index, 1);
-              break;
+              chunkData.ground.splice(index, 1);
             }
-          }
+          });
 
           document.getElementById('size-value').textContent =
             this.player.getSize().toFixed(1);
@@ -377,17 +363,20 @@ class Game {
       this.player.update();
       this.updateCamera(delta);
       
-      // Update chunks every other frame
+      // Update city chunks every other frame
       if (this.frame % 2 === 0) {
         this.cityGenerator.update(this.player.body.position);
       }
       
-      // Render using composer if available; otherwise regular renderer
-      if (this.bloomPass) {
-        this.composer.render();
-      } else {
-        this.renderer.render(this.scene, this.camera);
-      }
+      // Update flying creatures for all loaded chunks
+      const currentTime = performance.now() / 1000;
+      this.cityGenerator.objects.forEach(chunkData => {
+        chunkData.flying.forEach(creature => {
+          creature.update(currentTime);
+        });
+      });
+
+      this.renderer.render(this.scene, this.camera);
       this.frame++;
     };
 

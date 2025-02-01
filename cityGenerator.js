@@ -1,9 +1,12 @@
+import { FlyingCreature } from './flyingCreatures.js';
+
 export class CityGenerator {
   constructor(scene, world) {
     this.scene = scene;
     this.world = world;
     this.chunkSize = 100;
     this.loadedChunks = new Set();
+    // Map structure: key -> { ground: Array of ground objects, flying: Array of flying creatures }
     this.objects = new Map();
     this.minObjectSize = 0.2;   // Minimum size for collectibles
     this.maxObjectSize = 15;    // Maximum size for buildings
@@ -58,7 +61,9 @@ export class CityGenerator {
   }
 
   generateChunk(chunk) {
-    const objects = [];
+    // Using separate arrays for ground objects and flying creatures.
+    const groundObjects = [];
+    const flyingCreatures = [];
     const occupiedSpaces = new Set();
     
     // Function to check if a position is too close to existing objects
@@ -92,11 +97,12 @@ export class CityGenerator {
       return attempts < 50 ? { x, z } : null;
     };
 
+    // Updated object counts to add more variety.
     const objectCounts = {
-      tiny: 25,
-      medium: 15,
-      large: 5,
-      buildings: 6
+      tiny: 50,
+      medium: 30,
+      large: 10,
+      buildings: 8
     };
 
     const geometryPool = {
@@ -166,7 +172,7 @@ export class CityGenerator {
       });
       this.world.addBody(body);
 
-      objects.push({ mesh, body });
+      groundObjects.push({ mesh, body });
     }
 
     // Generate medium collectibles
@@ -218,7 +224,7 @@ export class CityGenerator {
       });
       this.world.addBody(body);
 
-      objects.push({ mesh, body });
+      groundObjects.push({ mesh, body });
     }
 
     // Generate large objects
@@ -277,7 +283,7 @@ export class CityGenerator {
       });
       this.world.addBody(body);
 
-      objects.push({ mesh: group, body });
+      groundObjects.push({ mesh: group, body });
     }
     
     // Generate buildings
@@ -320,17 +326,34 @@ export class CityGenerator {
       });
       this.world.addBody(body);
 
-      objects.push({ mesh: group, body });
+      groundObjects.push({ mesh: group, body });
+    }
+    
+    // Generate flying creatures within this chunk
+    // We'll create between 3 to 5 flying creatures of random types
+    const flyingTypes = ['butterfly', 'eagle', 'bee'];
+    const flyingCount = 3 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < flyingCount; i++) {
+      const type = flyingTypes[Math.floor(Math.random() * flyingTypes.length)];
+      // Position: random x, z within the chunk and y between 15 and 50
+      const x = (chunk.x * this.chunkSize) + Math.random() * this.chunkSize;
+      const z = (chunk.z * this.chunkSize) + Math.random() * this.chunkSize;
+      const y = 15 + Math.random() * 35;
+      const position = new THREE.Vector3(x, y, z);
+      const creature = new FlyingCreature(this.scene, type, position);
+      flyingCreatures.push(creature);
     }
 
-    this.objects.set(`${chunk.x},${chunk.z}`, objects);
+    const key = `${chunk.x},${chunk.z}`;
+    this.objects.set(key, { ground: groundObjects, flying: flyingCreatures });
   }
 
   removeChunk(chunk) {
     const key = `${chunk.x},${chunk.z}`;
-    const objects = this.objects.get(key);
-    if (objects) {
-      objects.forEach(obj => {
+    const chunkData = this.objects.get(key);
+    if (chunkData) {
+      // Remove ground objects
+      chunkData.ground.forEach(obj => {
         if (obj.mesh.geometry) obj.mesh.geometry.dispose();
         if (obj.mesh.material) {
           if (Array.isArray(obj.mesh.material)) {
@@ -341,6 +364,10 @@ export class CityGenerator {
         }
         this.scene.remove(obj.mesh);
         this.world.removeBody(obj.body);
+      });
+      // Dispose flying creatures
+      chunkData.flying.forEach(creature => {
+        creature.dispose();
       });
       this.objects.delete(key);
     }
