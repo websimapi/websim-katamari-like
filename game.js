@@ -4,6 +4,10 @@ import { PickupPreview } from './pickupPreview.js';
 
 class Game {
   constructor() {
+    // Set up scene first
+    this.setupScene();
+    
+    // Initialize camera after scene
     this.camera = new THREE.PerspectiveCamera(
       75,
       window.innerWidth / window.innerHeight,
@@ -13,16 +17,18 @@ class Game {
     this.camera.position.set(0, 10, 20);
     this.camera.lookAt(0, 0, 0);
 
-    this.setupScene();
+    // Initialize physics after scene
     this.setupPhysics();
     this.setupLights();
 
+    // Initialize game objects after scene and physics
     this.cityGenerator = new CityGenerator(this.scene, this.world);
     this.player = new PlayerBall(this.scene, this.world);
 
     // Add ground
     this.addGround();
 
+    // Initialize controls and collisions
     this.setupControls();
     this.setupCollisions();
 
@@ -44,83 +50,68 @@ class Game {
       { once: true }
     );
 
+    // Initialize timing variables
     this.clock = new THREE.Clock();
     this.fixedTimeStep = 1.0 / 60.0;
     this.maxSubSteps = 3;
-
-    // Optimize render quality vs performance
-    this.renderer.setPixelRatio(1); // Lock to 1 for better performance
-    this.renderer.powerPreference = "high-performance";
-    
-    // Optimize shadow settings
-    this.renderer.shadowMap.enabled = false;
-    
-    // Reduce bloom intensity and quality for better performance
-    this.bloomPass.strength = 1.0;
-    this.bloomPass.radius = 0.5;
-    this.bloomPass.threshold = 0.85;
-    this.bloomPass.resolution = new THREE.Vector2(256, 256);
-    
-    // Object pooling for particles
-    this.particlePool = [];
-    for(let i = 0; i < 100; i++) {
-      const particle = this.createParticle();
-      this.particlePool.push(particle);
-    }
-    
-    // Frame timing and throttling
+    this.frame = 0;
     this.lastFrameTime = 0;
     this.frameInterval = 1000/60; // Target 60fps
-    
-    // Cache commonly used vectors
+
+    // Cache vectors
     this._playerPos = new THREE.Vector3();
     this._temp = new THREE.Vector3();
-    
-    // Use worker for physics if available
+
+    // Initialize worker if available
     if (window.Worker) {
       this.physicsWorker = new Worker('physicsWorker.js');
       this.physicsWorker.onmessage = (e) => this.updatePhysics(e.data);
     }
 
+    // Handle window resize
     window.addEventListener('resize', this.onWindowResize.bind(this));
 
-    // Initialize the pickup preview UI
+    // Initialize pickup preview
     this.pickupPreview = new PickupPreview();
 
+    // Start game loop
     this.start();
   }
 
   setupScene() {
+    // Initialize Three.js scene
     this.scene = new THREE.Scene();
+    if (!this.scene) throw new Error('Failed to create scene');
+    
     this.scene.background = new THREE.Color(0x87ceeb);
 
+    // Set up renderer
     this.renderer = new THREE.WebGLRenderer({
       canvas: document.getElementById('gameCanvas'),
       antialias: true
     });
+    if (!this.renderer) throw new Error('Failed to create renderer');
+    
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setPixelRatio(1); // Lock to 1 for better performance
+    this.renderer.powerPreference = "high-performance";
+    this.renderer.shadowMap.enabled = false;
 
+    // Set up post-processing
     this.composer = new THREE.EffectComposer(this.renderer);
+    if (!this.composer) throw new Error('Failed to create composer');
+    
     this.renderPass = new THREE.RenderPass(this.scene, this.camera);
     this.composer.addPass(this.renderPass);
 
     this.bloomPass = new THREE.UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      1.5,
+      1.0,
       0.5,
       0.85
     );
+    this.bloomPass.resolution = new THREE.Vector2(256, 256);
     this.composer.addPass(this.bloomPass);
-  }
-
-  onWindowResize() {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    this.camera.aspect = width / height;
-    this.camera.updateProjectionMatrix();
-    this.renderer.setSize(width, height);
-    this.composer.setSize(width, height);
   }
 
   setupPhysics() {
@@ -375,8 +366,23 @@ class Game {
     });
   }
 
+  onWindowResize() {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(width, height);
+    this.composer.setSize(width, height);
+  }
+
   start() {
     const animate = (timestamp) => {
+      // Ensure we have a valid game state before continuing
+      if (!this.scene || !this.camera || !this.player || !this.cityGenerator) {
+        console.error('Critical game components missing');
+        return;
+      }
+
       requestAnimationFrame(animate);
       
       // Throttle frame rate
@@ -385,7 +391,7 @@ class Game {
       this.lastFrameTime = timestamp - (elapsed % this.frameInterval);
 
       try {
-        // Update physics on worker if available
+        // Update physics
         if (this.physicsWorker) {
           this.physicsWorker.postMessage({
             playerPos: this.player.body.position,
@@ -393,24 +399,27 @@ class Game {
           });
         } else {
           const delta = this.clock.getDelta();
-          this.world.step(this.fixedTimeStep, delta, this.maxSubSteps);
+          if (this.world) {
+            this.world.step(this.fixedTimeStep, delta, this.maxSubSteps);
+          }
         }
 
-        // Only update visible objects
-        this.player.update();
-        this.updateCamera();
+        // Essential updates every frame
+        if (this.player) {
+          this.player.update();
+          this.updateCamera();
+        }
         
-        // Throttle non-essential updates
+        // Non-essential updates every other frame
         if (this.frame % 2 === 0) {
-          // Ensure player position is valid before updating city
-          if (this.player && this.player.body && this.player.body.position) {
+          if (this.cityGenerator && this.player && this.player.body && this.player.body.position) {
             this.cityGenerator.update(this.player.body.position);
           }
           this.updateGlowingObjects();
         }
         
-        // Ensure scene and camera exist before rendering
-        if (this.scene && this.camera) {
+        // Render scene
+        if (this.composer) {
           this.composer.render();
         }
         
@@ -420,7 +429,6 @@ class Game {
       }
     };
 
-    this.frame = 0;
     animate();
   }
 
@@ -437,4 +445,10 @@ class Game {
   }
 }
 
-new Game();
+window.addEventListener('load', () => {
+  try {
+    new Game();
+  } catch (error) {
+    console.error('Failed to initialize game:', error);
+  }
+});
