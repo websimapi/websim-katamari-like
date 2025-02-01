@@ -101,7 +101,8 @@ class Game {
 
   setupPhysics() {
     this.world = new CANNON.World();
-    this.world.gravity.set(0, -30, 0); 
+    // Increase gravity strength as per previous instructions
+    this.world.gravity.set(0, -20, 0);
     this.world.broadphase = new CANNON.NaiveBroadphase();
     this.world.solver.iterations = 10;
     this.world.defaultContactMaterial.friction = 0.5;
@@ -256,43 +257,46 @@ class Game {
   setupCollisions() {
     this.player.body.addEventListener('collide', (event) => {
       const otherBody = event.body;
-
       if (otherBody.mass === 0) return;
 
       const object = Array.from(this.cityGenerator.objects.values())
         .flat()
         .find((obj) => obj.body === otherBody);
+      if (!object) return;
 
-      if (object) {
-        const objectSize =
-          object.body.shapes[0].radius ||
-          Math.max(
-            object.body.shapes[0].halfExtents.x,
-            object.body.shapes[0].halfExtents.y,
-            object.body.shapes[0].halfExtents.z
-          );
+      // Prevent processing already absorbed objects or objects with missing shapes
+      if (object.absorbed || !object.body.shapes || object.body.shapes.length === 0) return;
 
-        if (objectSize < this.player.radius) {
-          // Create a preview clone and update the pickup UI before absorbing the object
-          const previewClone = object.mesh.clone();
-          const itemName = object.mesh.userData.itemName || "Collectible";
-          this.pickupPreview.update(previewClone, itemName);
+      const objectShape = object.body.shapes[0];
+      const objectSize = objectShape.radius ||
+        Math.max(
+          objectShape.halfExtents.x,
+          objectShape.halfExtents.y,
+          objectShape.halfExtents.z
+        );
 
-          this.player.absorbObject(object);
+      if (objectSize < this.player.radius) {
+        // Mark object as absorbed to avoid multiple triggers
+        object.absorbed = true;
+        // Create a preview clone and update the pickup UI before absorbing the object
+        const previewClone = object.mesh.clone();
+        const itemName = object.mesh.userData.itemName || "Collectible";
+        this.pickupPreview.update(previewClone, itemName);
 
-          for (let [key, objects] of this.cityGenerator.objects.entries()) {
-            const index = objects.findIndex((obj) => obj.body === otherBody);
-            if (index !== -1) {
-              objects.splice(index, 1);
-              break;
-            }
+        this.player.absorbObject(object);
+
+        for (let [key, objects] of this.cityGenerator.objects.entries()) {
+          const index = objects.findIndex((obj) => obj.body === otherBody);
+          if (index !== -1) {
+            objects.splice(index, 1);
+            break;
           }
-
-          document.getElementById('size-value').textContent =
-            this.player.getSize().toFixed(1);
-          document.getElementById('score-value').textContent =
-            this.player.getCollectedCount();
         }
+
+        document.getElementById('size-value').textContent =
+          this.player.getSize().toFixed(1);
+        document.getElementById('score-value').textContent =
+          this.player.getCollectedCount();
       }
     });
   }
@@ -356,11 +360,6 @@ class Game {
       requestAnimationFrame(animate);
 
       const delta = this.clock.getDelta();
-      this.world.bodies.slice().forEach(b => {
-        if (!b.shapes || b.shapes.length === 0) {
-          this.world.removeBody(b);
-        }
-      });
       this.world.step(this.fixedTimeStep, delta, this.maxSubSteps);
       
       this.player.update();

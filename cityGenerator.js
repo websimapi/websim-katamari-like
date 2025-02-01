@@ -7,6 +7,14 @@ export class CityGenerator {
     this.objects = new Map();
     this.minObjectSize = 0.2;   // Minimum size for collectibles
     this.maxObjectSize = 15;    // Maximum size for buildings
+
+    // Increase tiny collectible count for more small objects spawning nearby
+    this.objectCounts = {
+      tiny: 40,       // increased from 25 to 40 for more spawn density
+      medium: 15,
+      large: 5,
+      buildings: 6
+    };
   }
 
   update(playerPosition) {
@@ -92,12 +100,8 @@ export class CityGenerator {
       return attempts < 50 ? { x, z } : null;
     };
 
-    const objectCounts = {
-      tiny: 25,
-      medium: 15,
-      large: 5,
-      buildings: 6
-    };
+    // Use the updated tiny count from this.objectCounts
+    const objectCounts = this.objectCounts;
 
     const geometryPool = {
       sphere: new THREE.IcosahedronGeometry(1, 0),
@@ -106,14 +110,15 @@ export class CityGenerator {
     };
 
     const materialPool = new Map();
-    const getMaterial = (color) => {
-      if (!materialPool.has(color)) {
-        materialPool.set(color, new THREE.MeshPhongMaterial({ 
+    const getMaterial = (color, customProps = {}) => {
+      if (!materialPool.has(color + JSON.stringify(customProps))) {
+        materialPool.set(color + JSON.stringify(customProps), new THREE.MeshPhongMaterial({ 
           color, 
-          flatShading: true 
+          flatShading: true,
+          ...customProps
         }));
       }
-      return materialPool.get(color);
+      return materialPool.get(color + JSON.stringify(customProps));
     };
 
     const createWindows = (width, height) => {
@@ -140,14 +145,17 @@ export class CityGenerator {
       if (!pos) continue;
       
       let mesh;
+      // For Paper object: make it look flat and much smaller by using a plane geometry
       if (Math.random() < 0.5) {
-        const geometry = geometryPool.box.clone();
-        geometry.scale(size * 2, size * 2, size * 2);
-        const material = getMaterial(0xFFFFFF);
+        const geometry = new THREE.PlaneGeometry(1, 1);
+        // Create a new material with double sided rendering for paper look
+        const material = new THREE.MeshPhongMaterial({ color: 0xFFFFFF, flatShading: true, side: THREE.DoubleSide });
         mesh = new THREE.Mesh(geometry, material);
-        mesh.rotation.x = Math.random() * Math.PI;
-        mesh.rotation.y = Math.random() * Math.PI;
+        // Apply a slight random rotation on the Z axis to add variety
+        mesh.rotation.z = Math.random() * Math.PI;
         mesh.userData.itemName = "Paper";
+        // Scale it down further than other collectibles to emphasize its small, flat nature
+        mesh.scale.set(size * 0.5, size * 0.5, 1);
       } else {
         const geometry = geometryPool.sphere.clone();
         geometry.scale(size, size, size);
@@ -167,6 +175,45 @@ export class CityGenerator {
       this.world.addBody(body);
 
       objects.push({ mesh, body });
+      
+      // Optionally, spawn additional tiny collectibles nearby for clustering effect
+      if (Math.random() < 0.3) {
+        const clusterCount = 2 + Math.floor(Math.random() * 2); // 2-3 extra in cluster
+        for (let j = 0; j < clusterCount; j++) {
+          const offsetX = pos.x + (Math.random() - 0.5) * size * 4;
+          const offsetZ = pos.z + (Math.random() - 0.5) * size * 4;
+          const clusterPos = { x: offsetX, z: offsetZ };
+          // Ensure cluster positions are valid using a simplified check
+          if (!isSpaceOccupied(offsetX, offsetZ, size)) {
+            let clusterMesh;
+            if (Math.random() < 0.5) {
+              const geometry = new THREE.PlaneGeometry(1, 1);
+              const material = new THREE.MeshPhongMaterial({ color: 0xFFFFFF, flatShading: true, side: THREE.DoubleSide });
+              clusterMesh = new THREE.Mesh(geometry, material);
+              clusterMesh.rotation.z = Math.random() * Math.PI;
+              clusterMesh.userData.itemName = "Paper";
+              clusterMesh.scale.set(size * 0.5, size * 0.5, 1);
+            } else {
+              const geometry = geometryPool.sphere.clone();
+              geometry.scale(size, size, size);
+              const material = getMaterial(this.getRandomColor());
+              clusterMesh = new THREE.Mesh(geometry, material);
+              clusterMesh.userData.itemName = "Crumpled Paper Ball";
+            }
+            clusterMesh.position.set(clusterPos.x, size, clusterPos.z);
+            this.scene.add(clusterMesh);
+
+            const clusterShape = new CANNON.Sphere(size);
+            const clusterBody = new CANNON.Body({
+              mass: size * 2,
+              shape: clusterShape,
+              position: new CANNON.Vec3(clusterPos.x, size, clusterPos.z)
+            });
+            this.world.addBody(clusterBody);
+            objects.push({ mesh: clusterMesh, body: clusterBody });
+          }
+        }
+      }
     }
 
     // Generate medium collectibles
