@@ -55,13 +55,16 @@ class Game {
     this.renderer.shadowMap.enabled = false; // Disable shadows for performance
     
     // Reduce bloom quality for better performance
-    this.bloomPass.strength = 1.0;
+    this.bloomPass.strength = 1.5;
     this.bloomPass.radius = 0.5;
     this.bloomPass.threshold = 0.85;
     
     // Cache frequently used objects
     this._playerPos = new THREE.Vector3();
     this._temp = new THREE.Vector3();
+    
+    // Listen to window resize events to update renderer and composer
+    window.addEventListener('resize', this.onWindowResize.bind(this));
 
     this.start();
   }
@@ -85,10 +88,19 @@ class Game {
     this.bloomPass = new THREE.UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
       1.5, // strength
-      0.4, // radius
+      0.5, // radius
       0.85 // threshold
     );
     this.composer.addPass(this.bloomPass);
+  }
+
+  onWindowResize() {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(width, height);
+    this.composer.setSize(width, height);
   }
 
   setupPhysics() {
@@ -172,7 +184,7 @@ class Game {
 
       this.player.applyForce(force);
       if (boost) {
-        this.player.triggerBoost(3000); // Boost lasts 3 seconds
+        this.player.triggerBoost(3000); // Boost lasts 3 seconds with 5x acceleration effect applied in the player logic
       }
     });
 
@@ -196,7 +208,7 @@ class Game {
 
   updateKeyboardControls() {
     const force = { x: 0, y: 0 };
-    const speed = 5;
+    const speed = 10; // Increased base speed by 2x
     let isMoving = false;
 
     if (this.keys['ArrowUp'] || this.keys['w']) {
@@ -245,7 +257,7 @@ class Game {
     if (isMoving) {
       this.player.applyForce(force);
       if (boost) {
-        this.player.triggerBoost(3000); // Boost lasts 3 seconds
+        this.player.triggerBoost(3000); // Boost lasts 3 seconds with 5x acceleration effect applied
       }
     } else {
       this.player.setBoosting(false);
@@ -336,12 +348,14 @@ class Game {
                 emissive: obj.mesh.material.color,
                 emissiveIntensity: 0.5
               });
+              // Cache original material for later restoration
+              obj.mesh.userData.originalMaterial = obj.mesh.material;
             }
             obj.mesh.material = obj.mesh.userData.emissiveMaterial;
           }
         } else if (obj.mesh.userData.isGlowing) {
           obj.mesh.userData.isGlowing = false;
-          obj.mesh.material = obj.mesh.userData.originalMaterial;
+          obj.mesh.material = obj.mesh.userData.originalMaterial || obj.mesh.material;
         }
       });
     });
