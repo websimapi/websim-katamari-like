@@ -628,7 +628,7 @@ class Game {
       });
 
       // Send our current ball state (position, orientation, size, attachments) to other peers (throttled every 100ms)
-      if (this.gameState === "PLAY" && performance.now() - this.lastSentPosition > 100) {
+      if (performance.now() - this.lastSentPosition > 100) {
         this.room.send({
           type: "ball-update",
           position: { 
@@ -646,7 +646,8 @@ class Game {
           attachedData: this.player.attachedMeshes.map(att => ({
             direction: { x: att.direction.x, y: att.direction.y, z: att.direction.z },
             itemName: att.mesh.userData.itemName || ""
-          }))
+          })),
+          isDemo: this.gameState === "TITLE"
         });
         this.lastSentPosition = performance.now();
       }
