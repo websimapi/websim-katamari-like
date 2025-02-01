@@ -183,18 +183,15 @@ export class PlayerBall {
 
     this.body.addShape(attachedShape, offset);
 
-    const addedMass = object.body.mass * 0.6; 
-    const newMass = this.body.mass + addedMass;
+    const newMass = this.body.mass + (object.body.mass * 0.6); 
     this.body.mass = newMass;
     this.body.updateMassProperties();
 
-    // Store attached mesh along with its physics shape, offset, and mass contribution.
     this.attachedMeshes.push({
       mesh: attachedMesh,
       direction: direction,
       shape: attachedShape,
-      offset: offset,
-      mass: addedMass
+      offset: offset
     });
 
     const objectVolume = (4 / 3) * Math.PI * Math.pow(objectSize, 3);
@@ -213,44 +210,6 @@ export class PlayerBall {
       const newPos = attached.direction.clone().multiplyScalar(this.radius);
       attached.mesh.position.copy(newPos);
     });
-  }
-
-  loseObjects(count) {
-    // When the ball collides with a moving obstacle larger than itself,
-    // lose a number of attached objects. These detached objects will be re-added
-    // to the scene with their own physics and given an impulse.
-    for (let i = 0; i < count; i++) {
-      if (this.attachedMeshes.length === 0) break;
-      const lost = this.attachedMeshes.pop();
-      // Remove the attached mesh from the player ball
-      this.mesh.remove(lost.mesh);
-
-      // Subtract the object's mass contribution from the player's body
-      this.body.mass -= lost.mass;
-      this.body.updateMassProperties();
-
-      // Get the world position of the lost object
-      const worldPos = new THREE.Vector3();
-      lost.mesh.getWorldPosition(worldPos);
-
-      // Create a new physics body for the lost object using the same shape
-      const lostBody = new CANNON.Body({
-        mass: lost.mass,
-        shape: lost.shape,
-        position: new CANNON.Vec3(worldPos.x, worldPos.y, worldPos.z)
-      });
-      // Apply an impulse to simulate it flying off
-      const impulse = new CANNON.Vec3(
-        (Math.random() - 0.5) * 100,
-        100,
-        (Math.random() - 0.5) * 100
-      );
-      lostBody.applyImpulse(impulse, lostBody.position);
-
-      // Re-add the lost mesh to the scene so it becomes an independent falling object
-      this.scene.add(lost.mesh);
-      this.world.addBody(lostBody);
-    }
   }
 
   getSize() {

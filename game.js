@@ -6,7 +6,7 @@ class Game {
   constructor() {
     // Game state: "TITLE" for demo mode, "PLAY" for actual gameplay
     this.gameState = "TITLE";
-    
+
     // Setup camera
     this.camera = new THREE.PerspectiveCamera(
       75,
@@ -62,6 +62,7 @@ class Game {
     this.fixedTimeStep = 1.0 / 60.0;
     this.maxSubSteps = 3;
 
+    // Shadows disabled for performance
     this.renderer.shadowMap.enabled = false;
     
     this._playerPos = new THREE.Vector3();
@@ -77,6 +78,13 @@ class Game {
     this.demoDirection = new THREE.Vector2(0, 0);
     this.demoOrbitAngle = 0;
 
+    // Initialize Multiplayer Lobby
+    // Create a WebsimSocket room connection (assumed to be available globally)
+    this.room = new WebsimSocket();
+    this.peerPlayers = {};  // To keep track of other players in the lobby
+    this.lastSentPosition = 0;
+    this.setupMultiplayer();
+
     // Setup Title Screen input listener
     const titleScreenEl = document.getElementById('title-screen');
     titleScreenEl.addEventListener('pointerdown', () => {
@@ -89,6 +97,44 @@ class Game {
     }, { once: true });
 
     this.start();
+  }
+
+  setupMultiplayer() {
+    // Handle incoming messages for peer position updates and disconnections
+    this.room.onmessage = (event) => {
+      const data = event.data;
+      switch (data.type) {
+        case "position-update":
+          // Ignore our own position updates
+          if (data.clientId === this.room.party.client.id) return;
+          // If we haven't seen this peer yet, create a simple representation
+          if (!this.peerPlayers[data.clientId]) {
+            const geometry = new THREE.SphereGeometry(1, 16, 16);
+            const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+            const peerMesh = new THREE.Mesh(geometry, material);
+            peerMesh.castShadow = true;
+            this.scene.add(peerMesh);
+            this.peerPlayers[data.clientId] = peerMesh;
+          }
+          // Update the peer's position
+          this.peerPlayers[data.clientId].position.set(
+            data.position.x,
+            data.position.y,
+            data.position.z
+          );
+          break;
+        case "disconnected":
+          // Remove disconnected player's mesh if it exists
+          if (this.peerPlayers[data.clientId]) {
+            this.scene.remove(this.peerPlayers[data.clientId]);
+            delete this.peerPlayers[data.clientId];
+          }
+          break;
+        default:
+          // Handle other event types if needed
+          break;
+      }
+    };
   }
 
   setupScene() {
@@ -112,8 +158,8 @@ class Game {
 
   setupPhysics() {
     this.world = new CANNON.World();
-    // Increased gravity for realism
-    this.world.gravity.set(0, -30, 0);
+    // Strengthen gravity for realism
+    this.world.gravity.set(0, -40, 0);
     this.world.broadphase = new CANNON.NaiveBroadphase();
     this.world.solver.iterations = 10;
     this.world.defaultContactMaterial.friction = 0.5;
@@ -275,22 +321,12 @@ class Game {
     this.player.body.addEventListener('collide', (event) => {
       const otherBody = event.body;
 
-      // If the collided body is a moving obstacle and larger than the player,
-      // trigger loss of attached objects.
-      if (otherBody.isMovingObstacle) {
-        if (otherBody.obstacleSize > this.player.radius) {
-          const lossCount = (otherBody.obstacleSize > this.player.radius * 1.5) ? 2 : 1;
-          this.player.loseObjects(lossCount);
-        }
-        return;
-      }
-
       if (otherBody.mass === 0) return;
 
       // Only check ground objects for collision with the player.
       const groundObjects = [];
       this.cityGenerator.objects.forEach(chunkData => {
-        if (chunkData.ground) groundObjects.push(...chunkData.ground);
+        groundObjects.push(...chunkData.ground);
       });
       const object = groundObjects.find((obj) => obj.body === otherBody);
 
@@ -313,11 +349,9 @@ class Game {
 
           // Remove object from the chunk's ground objects array
           this.cityGenerator.objects.forEach(chunkData => {
-            if (chunkData.ground) {
-              const index = chunkData.ground.findIndex((obj) => obj.body === otherBody);
-              if (index !== -1) {
-                chunkData.ground.splice(index, 1);
-              }
+            const index = chunkData.ground.findIndex((obj) => obj.body === otherBody);
+            if (index !== -1) {
+              chunkData.ground.splice(index, 1);
             }
           });
 
@@ -325,6 +359,19 @@ class Game {
             this.player.getSize().toFixed(1);
           document.getElementById('score-value').textContent =
             this.player.getCollectedCount();
+
+          // Persist the pickup to the database so that it appears in the live multiplayer lobby
+          (async () => {
+            try {
+              await this.room.collection('pickup').create({
+                objectName: itemName,
+                playerId: this.room.party.client.id,
+                size: this.player.getSize()
+              });
+            } catch (error) {
+              console.error('Error saving pickup record:', error);
+            }
+          })();
         }
       }
     });
@@ -384,12 +431,23 @@ class Game {
       // Update flying creatures for all loaded chunks
       const currentTime = performance.now() / 1000;
       this.cityGenerator.objects.forEach(chunkData => {
-        if (chunkData.flying) {
-          chunkData.flying.forEach(creature => {
-            creature.update(currentTime);
-          });
-        }
+        chunkData.flying.forEach(creature => {
+          creature.update(currentTime);
+        });
       });
+
+      // Send our current player position to other peers (throttled every 100ms)
+      if (this.gameState === "PLAY" && performance.now() - this.lastSentPosition > 100) {
+        this.room.send({
+          type: "position-update",
+          position: { 
+            x: this.player.mesh.position.x, 
+            y: this.player.mesh.position.y, 
+            z: this.player.mesh.position.z 
+          }
+        });
+        this.lastSentPosition = performance.now();
+      }
 
       this.renderer.render(this.scene, this.camera);
       this.frame++;
