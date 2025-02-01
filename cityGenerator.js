@@ -133,7 +133,7 @@ export class CityGenerator {
       return windowGroup;
     };
 
-    // Generate tiny collectibles (changed from Paper to Star Dust and placed in the sky)
+    // Generate tiny collectibles as "Star Dust" in the sky
     for (let i = 0; i < objectCounts.tiny; i++) {  
       const size = this.minObjectSize + Math.random() * 0.3;
       const pos = getValidPosition(size);
@@ -287,47 +287,20 @@ export class CityGenerator {
       objects.push({ mesh: group, body });
     }
     
-    // Generate buildings
-    for (let i = 0; i < objectCounts.buildings; i++) {  
-      const width = 3 + Math.random() * 5;   
-      const height = 6 + Math.random() * 14;
-      const size = Math.max(width, height);
-      
-      const pos = getValidPosition(width);
-      if (!pos) continue;
-      
-      const group = new THREE.Group();
-      
-      const buildingGeometry = geometryPool.box.clone();
-      buildingGeometry.scale(width, height, width);
-      const buildingMaterial = getMaterial(0x808080);
-      const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
-      group.add(building);
-      
-      const windows = createWindows(width, height);
-      group.add(windows);
-      
-      const roofDetail = new THREE.Mesh(
-        geometryPool.box.clone(),
-        buildingMaterial
-      );
-      roofDetail.scale.set(width * 0.7, height * 0.1, width * 0.7);
-      roofDetail.position.y = height/2 + height * 0.05;
-      group.add(roofDetail);
-      
-      group.position.set(pos.x, height/2, pos.z);
-      group.userData.itemName = "Building";
-      this.scene.add(group);
-
-      const shape = new CANNON.Box(new CANNON.Vec3(width/2, height/2, width/2));
-      const body = new CANNON.Body({
-        mass: width * height * 2,
-        shape: shape,
-        position: new CANNON.Vec3(pos.x, height/2, pos.z)
-      });
-      this.world.addBody(body);
-
-      objects.push({ mesh: group, body });
+    // Generate unique silly objects on the ground
+    // Expanded list of unique types
+    const uniqueTypes = ["Carrot", "Frying Pan", "Boat", "Fish", "Number 3", "UFO", "Rubber Duck", "Cupcake", "Sunglasses", "Banana"];
+    const uniqueCount = 10; // Increased number of unique objects per chunk
+    for (let i = 0; i < uniqueCount; i++) {
+      // Use an average size for unique objects
+      const size = 1 + Math.random();
+      const posUnique = getValidPosition(size);
+      if (!posUnique) continue;
+      const type = uniqueTypes[Math.floor(Math.random() * uniqueTypes.length)];
+      const uniqueObject = this.createUniqueObject(type, posUnique, size);
+      if (uniqueObject) {
+        objects.push(uniqueObject);
+      }
     }
 
     this.objects.set(`${chunk.x},${chunk.z}`, objects);
@@ -351,6 +324,177 @@ export class CityGenerator {
       });
       this.objects.delete(key);
     }
+  }
+
+  createUniqueObject(type, pos, size) {
+    const group = new THREE.Group();
+    let width = size * 2, height = size * 2, depth = size * 2;
+    if (type === "Carrot") {
+      const geometry = new THREE.CylinderGeometry(0.2 * size, 0.5 * size, 2 * size, 8);
+      const material = new THREE.MeshPhongMaterial({ color: 0xFFA500, flatShading: true });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.rotation.z = Math.PI / 8;
+      group.add(mesh);
+      group.userData.itemName = "Carrot";
+      height = 2 * size;
+      width = 0.5 * size;
+      depth = 0.5 * size;
+    } else if (type === "Frying Pan") {
+      const panGeometry = new THREE.CircleGeometry(0.7 * size, 16);
+      const panMaterial = new THREE.MeshPhongMaterial({ color: 0x555555, flatShading: true });
+      const panMesh = new THREE.Mesh(panGeometry, panMaterial);
+      panMesh.rotation.x = -Math.PI / 2;
+      group.add(panMesh);
+      const handleGeometry = new THREE.BoxGeometry(0.2 * size, 0.2 * size, 1 * size);
+      const handleMaterial = new THREE.MeshPhongMaterial({ color: 0x333333, flatShading: true });
+      const handleMesh = new THREE.Mesh(handleGeometry, handleMaterial);
+      handleMesh.position.set(0, 0.1 * size, 0.8 * size);
+      group.add(handleMesh);
+      group.userData.itemName = "Frying Pan";
+      height = 0.2 * size;
+      width = 1.4 * size;
+      depth = 1 * size;
+    } else if (type === "Boat") {
+      const hullGeometry = new THREE.BoxGeometry(1.5 * size, 0.5 * size, 0.7 * size);
+      const hullMaterial = new THREE.MeshPhongMaterial({ color: 0x8B4513, flatShading: true });
+      const hullMesh = new THREE.Mesh(hullGeometry, hullMaterial);
+      hullMesh.position.y = 0.25 * size;
+      group.add(hullMesh);
+      const sailShape = new THREE.Shape();
+      sailShape.moveTo(0, 0);
+      sailShape.lineTo(0, 1.5 * size);
+      sailShape.lineTo(1 * size, 0.75 * size);
+      sailShape.lineTo(0, 0);
+      const extrudeSettings = { depth: 0.1 * size, bevelEnabled: false };
+      const sailGeometry = new THREE.ExtrudeGeometry(sailShape, extrudeSettings);
+      const sailMaterial = new THREE.MeshPhongMaterial({ color: 0xFFFFFF, flatShading: true });
+      const sailMesh = new THREE.Mesh(sailGeometry, sailMaterial);
+      sailMesh.position.set(0.5 * size, 0.5 * size, 0);
+      sailMesh.rotation.y = -Math.PI / 8;
+      group.add(sailMesh);
+      group.userData.itemName = "Boat";
+      height = 0.5 * size;
+      width = 1.5 * size;
+      depth = 0.7 * size;
+    } else if (type === "Fish") {
+      const bodyGeometry = new THREE.SphereGeometry(0.5 * size, 8, 8);
+      bodyGeometry.scale(1.5, 1, 1);
+      const bodyMaterial = new THREE.MeshPhongMaterial({ color: 0x00FFFF, flatShading: true });
+      const bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
+      group.add(bodyMesh);
+      const tailShape = new THREE.Shape();
+      tailShape.moveTo(0, 0);
+      tailShape.lineTo(-0.5 * size, 0.3 * size);
+      tailShape.lineTo(-0.5 * size, -0.3 * size);
+      tailShape.lineTo(0, 0);
+      const tailGeometry = new THREE.ExtrudeGeometry(tailShape, { depth: 0.1 * size, bevelEnabled: false });
+      const tailMaterial = new THREE.MeshPhongMaterial({ color: 0x00FFFF, flatShading: true });
+      const tailMesh = new THREE.Mesh(tailGeometry, tailMaterial);
+      tailMesh.position.set(-0.75 * size, 0, 0);
+      group.add(tailMesh);
+      group.userData.itemName = "Fish";
+      height = 0.5 * size;
+      width = 1 * size;
+      depth = 0.5 * size;
+    } else if (type === "Number 3") {
+      const torusGeometry1 = new THREE.TorusGeometry(0.4 * size, 0.1 * size, 8, 16, Math.PI);
+      const torusMaterial = new THREE.MeshPhongMaterial({ color: 0xFF69B4, flatShading: true });
+      const torus1 = new THREE.Mesh(torusGeometry1, torusMaterial);
+      torus1.rotation.x = Math.PI / 2;
+      torus1.position.set(0, 0.4 * size, 0);
+      group.add(torus1);
+      const torusGeometry2 = new THREE.TorusGeometry(0.4 * size, 0.1 * size, 8, 16, Math.PI);
+      const torus2 = new THREE.Mesh(torusGeometry2, torusMaterial);
+      torus2.rotation.x = Math.PI / 2;
+      torus2.position.set(0, -0.4 * size, 0);
+      group.add(torus2);
+      group.userData.itemName = "Number 3";
+      height = 0.8 * size;
+      width = 0.8 * size;
+      depth = 0.2 * size;
+    } else if (type === "UFO") {
+      const discGeometry = new THREE.CylinderGeometry(size, size, size * 0.2, 32);
+      const discMaterial = new THREE.MeshPhongMaterial({ color: 0xaaaaaa, flatShading: true });
+      const discMesh = new THREE.Mesh(discGeometry, discMaterial);
+      group.add(discMesh);
+      const domeGeometry = new THREE.SphereGeometry(size * 0.6, 16, 16, 0, Math.PI);
+      const domeMaterial = new THREE.MeshPhongMaterial({ color: 0x8888ff, flatShading: true });
+      const domeMesh = new THREE.Mesh(domeGeometry, domeMaterial);
+      domeMesh.position.y = size * 0.2;
+      group.add(domeMesh);
+      group.userData.itemName = "UFO";
+      width = size * 2;
+      height = size;
+      depth = size * 2;
+    } else if (type === "Rubber Duck") {
+      const bodyGeo = new THREE.SphereGeometry(size * 0.5, 16, 16);
+      const bodyMat = new THREE.MeshPhongMaterial({ color: 0xffff00, flatShading: true });
+      const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
+      group.add(bodyMesh);
+      const beakGeo = new THREE.ConeGeometry(size * 0.2, size * 0.4, 16);
+      const beakMat = new THREE.MeshPhongMaterial({ color: 0xffa500, flatShading: true });
+      const beakMesh = new THREE.Mesh(beakGeo, beakMat);
+      beakMesh.rotation.z = Math.PI / 2;
+      beakMesh.position.set(size * 0.5, 0, 0);
+      group.add(beakMesh);
+      group.userData.itemName = "Rubber Duck";
+      width = size;
+      height = size;
+      depth = size;
+    } else if (type === "Cupcake") {
+      const baseGeo = new THREE.CylinderGeometry(size * 0.5, size * 0.5, size, 16);
+      const baseMat = new THREE.MeshPhongMaterial({ color: 0xd2b48c, flatShading: true });
+      const baseMesh = new THREE.Mesh(baseGeo, baseMat);
+      baseMesh.position.y = size * 0.5;
+      group.add(baseMesh);
+      const icingGeo = new THREE.ConeGeometry(size * 0.6, size, 16);
+      const icingMat = new THREE.MeshPhongMaterial({ color: 0xffc0cb, flatShading: true });
+      const icingMesh = new THREE.Mesh(icingGeo, icingMat);
+      icingMesh.position.y = size * 1.1;
+      group.add(icingMesh);
+      group.userData.itemName = "Cupcake";
+      width = size;
+      height = size * 2;
+      depth = size;
+    } else if (type === "Sunglasses") {
+      const leftGlass = new THREE.BoxGeometry(size * 0.5, size * 0.2, size * 0.1);
+      const rightGlass = new THREE.BoxGeometry(size * 0.5, size * 0.2, size * 0.1);
+      const glassMat = new THREE.MeshPhongMaterial({ color: 0x000000, flatShading: true });
+      const leftMesh = new THREE.Mesh(leftGlass, glassMat);
+      const rightMesh = new THREE.Mesh(rightGlass, glassMat);
+      leftMesh.position.set(-size * 0.3, 0, 0);
+      rightMesh.position.set(size * 0.3, 0, 0);
+      group.add(leftMesh);
+      group.add(rightMesh);
+      group.userData.itemName = "Sunglasses";
+      width = size;
+      height = size * 0.5;
+      depth = size;
+    } else if (type === "Banana") {
+      const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(-size, 0, 0),
+        new THREE.Vector3(-size/2, size/2, 0),
+        new THREE.Vector3(size/2, size/2, 0),
+        new THREE.Vector3(size, 0, 0)
+      ]);
+      const geometry = new THREE.TubeGeometry(curve, 20, size * 0.1, 8, false);
+      const material = new THREE.MeshPhongMaterial({ color: 0xffff00, flatShading: true });
+      const mesh = new THREE.Mesh(geometry, material);
+      group.add(mesh);
+      group.userData.itemName = "Banana";
+      width = size * 2;
+      height = size;
+      depth = size;
+    }
+    group.position.set(pos.x, (height / 2), pos.z);
+    const shape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
+    const body = new CANNON.Body({
+      mass: 5 * size,
+      shape: shape,
+      position: new CANNON.Vec3(pos.x, (height / 2), pos.z)
+    });
+    this.world.addBody(body);
+    return { mesh: group, body: body };
   }
 
   getRandomColor() {
