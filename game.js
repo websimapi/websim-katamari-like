@@ -29,6 +29,9 @@ class Game {
     // Ensure initial player position is near the center.
     this.player.body.position.set(0, this.player.radius, 0);
     this.player.mesh.position.copy(this.player.body.position);
+    // Initialize additional properties for player collisions
+    this.player.isStuck = false;
+    this.player.stuckTo = null;
 
     // Add ground
     this.addGround();
@@ -256,6 +259,8 @@ class Game {
     this.joystick.on('move', (evt, data) => {
       // Only process input if in PLAY mode
       if (this.gameState !== "PLAY") return;
+      
+      // Count joystick wiggles regardless of stuck state.
       const maxForce = 5;
       const force = {
         x: data.vector.x * maxForce,
@@ -278,15 +283,20 @@ class Game {
           signChanges++;
         }
       }
-
-      let boost = false;
-      if (signChanges >= 3) {
-        boost = true;
-        this.joystickMovements = [];
+      
+      // If player is stuck to a larger player, require rapid wiggle to get unstuck.
+      if (this.player.isStuck) {
+        if (signChanges >= 3) {
+          // Unstick the player and apply a freeing force.
+          this.player.isStuck = false;
+          this.player.stuckTo = null;
+          this.player.applyForce(force);
+        }
+        return;
       }
 
       this.player.applyForce(force);
-      if (boost) {
+      if (signChanges >= 3) {
         // Longer boost duration with 5x acceleration during boost
         this.player.triggerBoost(5000);
       }
@@ -350,16 +360,21 @@ class Game {
         signChanges++;
       }
     }
-
-    let boost = false;
-    if (signChanges >= 3) {
-      boost = true;
-      this.keyboardMovements = [];
+    
+    // If player is stuck to a larger player, require rapid wiggle to get unstuck.
+    if (this.player.isStuck) {
+      if (signChanges >= 3) {
+        // Unstick the player and apply the current force.
+        this.player.isStuck = false;
+        this.player.stuckTo = null;
+        this.player.applyForce(force);
+      }
+      return;
     }
 
     if (isMoving) {
       this.player.applyForce(force);
-      if (boost) {
+      if (signChanges >= 3) {
         this.player.triggerBoost(5000);
       }
     } else {
@@ -433,6 +448,77 @@ class Game {
     });
   }
 
+  // Check collisions between local player and remote players (peerPlayers)
+  checkPlayerCollisions() {
+    const localPos = this.player.mesh.position;
+    const localRadius = this.player.radius;
+    for (const clientId in this.peerPlayers) {
+      const group = this.peerPlayers[clientId];
+      // Get remote player's radius from its main ball mesh
+      const peerRadius = group.userData.mainBallMesh.geometry.parameters.radius;
+      const distance = localPos.distanceTo(group.position);
+      if (distance < localRadius + peerRadius) {
+        // If the local player is at least 5m larger, absorb the remote player.
+        if (localRadius >= peerRadius + 5) {
+          this.absorbPeer(clientId, peerRadius);
+        }
+        // Otherwise, if the remote player is at least 5m larger, mark local player as stuck.
+        else if (peerRadius >= localRadius + 5) {
+          if (!this.player.isStuck) {
+            this.player.isStuck = true;
+            this.player.stuckTo = clientId;
+            // Optionally, you could provide a visual indicator here.
+          }
+        }
+      } else {
+        // If previously stuck to this peer and no longer colliding, clear stuck state.
+        if (this.player.isStuck && this.player.stuckTo === clientId) {
+          this.player.isStuck = false;
+          this.player.stuckTo = null;
+        }
+      }
+    }
+  }
+
+  // Absorb a remote player peer by updating the local player's radius, mass, and geometry.
+  absorbPeer(clientId, peerRadius) {
+    // Remove peer's mesh from scene and from peerPlayers
+    const peerGroup = this.peerPlayers[clientId];
+    if (peerGroup) {
+      this.scene.remove(peerGroup);
+      delete this.peerPlayers[clientId];
+    }
+    // Compute volumes for both balls
+    const localVolume = (4 / 3) * Math.PI * Math.pow(this.player.radius, 3);
+    const peerVolume = (4 / 3) * Math.PI * Math.pow(peerRadius, 3);
+    const newVolume = localVolume + peerVolume;
+    const newRadius = Math.cbrt((3 * newVolume) / (4 * Math.PI));
+
+    // Update player's radius
+    const oldRadius = this.player.radius;
+    this.player.radius = newRadius;
+    // Update the main collision shape
+    this.player.body.shapes[0].radius = newRadius;
+    // Update mass proportionally (approximation)
+    const newMass = this.player.body.mass * (newVolume / localVolume);
+    this.player.body.mass = newMass;
+    this.player.body.updateMassProperties();
+
+    // Update the player's mesh geometry
+    const newGeometry = new THREE.SphereGeometry(newRadius, 32, 32);
+    this.player.mesh.geometry.dispose();
+    this.player.mesh.geometry = newGeometry;
+
+    // Update attached meshes positions
+    this.player.attachedMeshes.forEach(attached => {
+      const newPos = attached.direction.clone().multiplyScalar(newRadius);
+      attached.mesh.position.copy(newPos);
+    });
+
+    // Update UI for size
+    document.getElementById('size-value').textContent = newRadius.toFixed(1);
+  }
+
   updateCamera(delta) {
     if (this.gameState === "TITLE") {
       // In demo mode, slowly orbit around the player for an attractive pan effect
@@ -477,6 +563,8 @@ class Game {
       }
 
       this.player.update();
+      // Check collisions between local player and remote players
+      this.checkPlayerCollisions();
       this.updateCamera(delta);
       
       // Update city chunks every other frame
