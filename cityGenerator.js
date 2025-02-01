@@ -6,7 +6,7 @@ export class CityGenerator {
     this.world = world;
     this.chunkSize = 100;
     this.loadedChunks = new Set();
-    // Map structure: key -> { ground: Array of ground objects, flying: Array of flying creatures }
+    // Map structure: key -> { ground: Array of ground objects, flying: Array of flying creatures, moving: Array of moving obstacles }
     this.objects = new Map();
     this.minObjectSize = 0.2;   // Minimum size for collectibles
     this.maxObjectSize = 15;    // Maximum size for buildings
@@ -38,6 +38,22 @@ export class CityGenerator {
         this.loadedChunks.delete(key);
       }
     });
+
+    // Update moving obstacles in all chunks
+    this.objects.forEach(chunkData => {
+      if (chunkData.moving) {
+        chunkData.moving.forEach(obstacle => {
+          // Sync the mesh position with the physics body
+          obstacle.mesh.position.copy(obstacle.body.position);
+          // If the obstacle is too far from its origin, reverse its horizontal velocity
+          const dist = obstacle.mesh.position.distanceTo(obstacle.origin);
+          if (dist > obstacle.range) {
+            obstacle.body.velocity.x *= -1;
+            obstacle.body.velocity.z *= -1;
+          }
+        });
+      }
+    });
   }
 
   getChunkCoords(position) {
@@ -61,9 +77,10 @@ export class CityGenerator {
   }
 
   generateChunk(chunk) {
-    // Using separate arrays for ground objects and flying creatures.
+    // Using separate arrays for ground objects, flying creatures and moving obstacles.
     const groundObjects = [];
     const flyingCreatures = [];
+    const movingObstacles = [];
     const occupiedSpaces = new Set();
     
     // Function to check if a position is too close to existing objects
@@ -344,8 +361,43 @@ export class CityGenerator {
       flyingCreatures.push(creature);
     }
 
+    // Generate moving obstacles
+    const movingCount = 2 + Math.floor(Math.random() * 3); // 2 to 4 obstacles
+    for (let i = 0; i < movingCount; i++) {
+      const size = 3 + Math.random() * 3; // size between 3 and 6
+      const pos = getValidPosition(size);
+      if (!pos) continue;
+      const geometry = new THREE.SphereGeometry(size, 16, 16);
+      const material = getMaterial(0x555555);
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(pos.x, size, pos.z);
+      mesh.userData.movingObstacle = true;
+      mesh.userData.objectSize = size;
+      this.scene.add(mesh);
+
+      const body = new CANNON.Body({
+        mass: size * 20,
+        shape: new CANNON.Sphere(size),
+        position: new CANNON.Vec3(pos.x, size, pos.z)
+      });
+      const velX = (Math.random() - 0.5) * 5;
+      const velZ = (Math.random() - 0.5) * 5;
+      body.velocity.set(velX, 0, velZ);
+      body.isMovingObstacle = true;
+      body.obstacleSize = size;
+      this.world.addBody(body);
+
+      movingObstacles.push({
+        mesh,
+        body,
+        origin: new THREE.Vector3(pos.x, size, pos.z),
+        range: this.chunkSize / 3
+      });
+    }
+    
+    // Save objects into map
     const key = `${chunk.x},${chunk.z}`;
-    this.objects.set(key, { ground: groundObjects, flying: flyingCreatures });
+    this.objects.set(key, { ground: groundObjects, flying: flyingCreatures, moving: movingObstacles });
   }
 
   removeChunk(chunk) {
@@ -369,6 +421,15 @@ export class CityGenerator {
       chunkData.flying.forEach(creature => {
         creature.dispose();
       });
+      // Remove moving obstacles
+      if (chunkData.moving) {
+        chunkData.moving.forEach(obstacle => {
+          if (obstacle.mesh.geometry) obstacle.mesh.geometry.dispose();
+          if (obstacle.mesh.material) obstacle.mesh.material.dispose();
+          this.scene.remove(obstacle.mesh);
+          this.world.removeBody(obstacle.body);
+        });
+      }
       this.objects.delete(key);
     }
   }

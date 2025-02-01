@@ -112,7 +112,8 @@ class Game {
 
   setupPhysics() {
     this.world = new CANNON.World();
-    this.world.gravity.set(0, -30, 0); // Slightly stronger gravity for realism
+    // Increased gravity for realism
+    this.world.gravity.set(0, -30, 0);
     this.world.broadphase = new CANNON.NaiveBroadphase();
     this.world.solver.iterations = 10;
     this.world.defaultContactMaterial.friction = 0.5;
@@ -274,12 +275,22 @@ class Game {
     this.player.body.addEventListener('collide', (event) => {
       const otherBody = event.body;
 
+      // If the collided body is a moving obstacle and larger than the player,
+      // trigger loss of attached objects.
+      if (otherBody.isMovingObstacle) {
+        if (otherBody.obstacleSize > this.player.radius) {
+          const lossCount = (otherBody.obstacleSize > this.player.radius * 1.5) ? 2 : 1;
+          this.player.loseObjects(lossCount);
+        }
+        return;
+      }
+
       if (otherBody.mass === 0) return;
 
       // Only check ground objects for collision with the player.
       const groundObjects = [];
       this.cityGenerator.objects.forEach(chunkData => {
-        groundObjects.push(...chunkData.ground);
+        if (chunkData.ground) groundObjects.push(...chunkData.ground);
       });
       const object = groundObjects.find((obj) => obj.body === otherBody);
 
@@ -302,9 +313,11 @@ class Game {
 
           // Remove object from the chunk's ground objects array
           this.cityGenerator.objects.forEach(chunkData => {
-            const index = chunkData.ground.findIndex((obj) => obj.body === otherBody);
-            if (index !== -1) {
-              chunkData.ground.splice(index, 1);
+            if (chunkData.ground) {
+              const index = chunkData.ground.findIndex((obj) => obj.body === otherBody);
+              if (index !== -1) {
+                chunkData.ground.splice(index, 1);
+              }
             }
           });
 
@@ -371,9 +384,11 @@ class Game {
       // Update flying creatures for all loaded chunks
       const currentTime = performance.now() / 1000;
       this.cityGenerator.objects.forEach(chunkData => {
-        chunkData.flying.forEach(creature => {
-          creature.update(currentTime);
-        });
+        if (chunkData.flying) {
+          chunkData.flying.forEach(creature => {
+            creature.update(currentTime);
+          });
+        }
       });
 
       this.renderer.render(this.scene, this.camera);
