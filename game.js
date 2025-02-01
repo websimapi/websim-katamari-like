@@ -45,15 +45,23 @@ class Game {
       { once: true }
     );
 
-    // Add render distance slider handler
-    const renderSlider = document.getElementById('render-slider');
-    const renderValue = document.getElementById('render-value');
+    // Add FPS limiter
+    this.clock = new THREE.Clock();
+    this.fixedTimeStep = 1.0 / 60.0;
+    this.maxSubSteps = 3;
+
+    // Optimize renderer
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = false; // Disable shadows for performance
     
-    renderSlider.addEventListener('input', (e) => {
-      const distance = parseInt(e.target.value);
-      renderValue.textContent = distance;
-      this.cityGenerator.setRenderDistance(distance);
-    });
+    // Reduce bloom quality for better performance
+    this.bloomPass.strength = 1.0;
+    this.bloomPass.radius = 0.5;
+    this.bloomPass.threshold = 0.85;
+    
+    // Cache frequently used objects
+    this._playerPos = new THREE.Vector3();
+    this._temp = new THREE.Vector3();
 
     this.start();
   }
@@ -296,11 +304,13 @@ class Game {
 
   updateGlowingObjects() {
     const playerRadius = this.player.radius;
-    const playerPosition = this.player.body.position;
-    const glowRange = 10; // Reduced to 10 meters
+    this._playerPos.copy(this.player.body.position);
+    const glowRange = 10;
 
     this.cityGenerator.objects.forEach((objects) => {
       objects.forEach((obj) => {
+        if (!obj.mesh) return; // Skip if object was removed
+
         const objectSize = obj.body.shapes[0].radius ||
           Math.max(
             obj.body.shapes[0].halfExtents.x,
@@ -308,28 +318,26 @@ class Game {
             obj.body.shapes[0].halfExtents.z
           );
 
-        const distance = new THREE.Vector3(
+        // Use cached vector for distance calculation
+        this._temp.set(
           obj.body.position.x,
           obj.body.position.y,
           obj.body.position.z
-        ).distanceTo(
-          new THREE.Vector3(
-            playerPosition.x,
-            playerPosition.y,
-            playerPosition.z
-          )
         );
+        
+        const distance = this._temp.distanceTo(this._playerPos);
 
-        // Only glow if object is both smaller than player and within range
         if (objectSize < playerRadius && distance < glowRange) {
           if (!obj.mesh.userData.isGlowing) {
             obj.mesh.userData.isGlowing = true;
-            obj.mesh.userData.originalMaterial = obj.mesh.material;
-            obj.mesh.material = new THREE.MeshPhongMaterial({
-              color: obj.mesh.userData.originalMaterial.color,
-              emissive: obj.mesh.userData.originalMaterial.color,
-              emissiveIntensity: 0.5
-            });
+            if (!obj.mesh.userData.emissiveMaterial) {
+              obj.mesh.userData.emissiveMaterial = new THREE.MeshPhongMaterial({
+                color: obj.mesh.material.color,
+                emissive: obj.mesh.material.color,
+                emissiveIntensity: 0.5
+              });
+            }
+            obj.mesh.material = obj.mesh.userData.emissiveMaterial;
           }
         } else if (obj.mesh.userData.isGlowing) {
           obj.mesh.userData.isGlowing = false;
@@ -343,15 +351,25 @@ class Game {
     const animate = () => {
       requestAnimationFrame(animate);
 
-      this.world.step(1 / 60);
+      const delta = this.clock.getDelta();
+      
+      // Limit physics updates
+      this.world.step(this.fixedTimeStep, delta, this.maxSubSteps);
+      
       this.player.update();
       this.updateCamera();
-      this.cityGenerator.update(this.player.body.position);
-      this.updateGlowingObjects();
-
+      
+      // Only update city and glow effects every other frame
+      if (this.frame % 2 === 0) {
+        this.cityGenerator.update(this.player.body.position);
+        this.updateGlowingObjects();
+      }
+      
       this.composer.render();
+      this.frame++;
     };
 
+    this.frame = 0;
     animate();
   }
 }

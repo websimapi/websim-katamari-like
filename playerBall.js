@@ -94,18 +94,19 @@ export class PlayerBall {
   }
 
   emitParticles() {
-    const particleGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+    if (Math.random() > 0.3) return;
+
+    const particleGeometry = new THREE.SphereGeometry(0.1, 4, 4);
     const particleMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const particle = new THREE.Mesh(particleGeometry, particleMaterial);
     particle.position.copy(this.mesh.position);
 
-    // Position the particle behind the player
     const behindDirection = new THREE.Vector3(0, 0, -1);
     behindDirection.applyQuaternion(this.mesh.quaternion);
     particle.position.add(behindDirection.multiplyScalar(this.radius + 0.5));
 
-    particle.lifeTime = 0.5; // seconds
-    particle.createdAt = performance.now() / 1000; // current time in seconds
+    particle.lifeTime = 0.5; 
+    particle.createdAt = performance.now() / 1000; 
 
     this.particleGroup.add(particle);
     this.particles.push(particle);
@@ -113,18 +114,19 @@ export class PlayerBall {
 
   updateParticles() {
     const currentTime = performance.now() / 1000;
-    this.particles = this.particles.filter((particle) => {
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const particle = this.particles[i];
       const age = currentTime - particle.createdAt;
       if (age > particle.lifeTime) {
         this.particleGroup.remove(particle);
-        return false;
+        particle.geometry.dispose();
+        particle.material.dispose();
+        this.particles.splice(i, 1);
       } else {
-        // Update particle properties (e.g., fade out)
         particle.material.opacity = 1 - (age / particle.lifeTime);
         particle.material.transparent = true;
-        return true;
       }
-    });
+    }
   }
 
   absorbObject(object) {
@@ -140,15 +142,12 @@ export class PlayerBall {
 
     if (objectSize >= this.radius) return;
 
-    // Remove the original object from the scene and physics world
     this.scene.remove(object.mesh);
     this.world.removeBody(object.body);
     this.collectedObjects.push(object);
 
-    // Create and attach the visual representation
     const attachedMesh = object.mesh.clone();
 
-    // Calculate random direction on the surface of the sphere
     const phi = Math.random() * Math.PI * 2;
     const theta = Math.random() * Math.PI;
     const direction = new THREE.Vector3(
@@ -157,17 +156,14 @@ export class PlayerBall {
       Math.cos(theta)
     );
 
-    // Position relative to the player mesh
     const attachPosition = direction.clone().multiplyScalar(this.radius);
     attachedMesh.position.copy(attachPosition);
     attachedMesh.scale.set(0.6, 0.6, 0.6);
 
-    // Add the mesh as a child of the player mesh
     this.mesh.add(attachedMesh);
 
-    // Create a physics shape for the attached object
     let attachedShape;
-    const scale = 0.6; // Match the visual scale
+    const scale = 0.6; 
 
     if (objectShape instanceof CANNON.Sphere) {
       attachedShape = new CANNON.Sphere(objectShape.radius * scale);
@@ -179,22 +175,18 @@ export class PlayerBall {
       ));
     }
 
-    // Calculate the offset in world coordinates
     const offset = new CANNON.Vec3(
       attachPosition.x,
       attachPosition.y,
       attachPosition.z
     );
 
-    // Add the shape to the compound body with the calculated offset
     this.body.addShape(attachedShape, offset);
 
-    // Update the body's mass and inertia
-    const newMass = this.body.mass + (object.body.mass * 0.6); // Scale mass like we scaled size
+    const newMass = this.body.mass + (object.body.mass * 0.6); 
     this.body.mass = newMass;
     this.body.updateMassProperties();
 
-    // Keep track of the attached mesh and its direction
     this.attachedMeshes.push({
       mesh: attachedMesh,
       direction: direction,
@@ -202,22 +194,18 @@ export class PlayerBall {
       offset: offset
     });
 
-    // Calculate new core size based on combined volume
     const objectVolume = (4 / 3) * Math.PI * Math.pow(objectSize, 3);
     const currentVolume = (4 / 3) * Math.PI * Math.pow(this.radius, 3);
     const newVolume = currentVolume + objectVolume;
     const newRadius = Math.pow((3 * newVolume) / (4 * Math.PI), 1 / 3);
 
-    // Update core radius
     this.radius = newRadius;
     this.body.shapes[0].radius = this.radius;
 
-    // Update visual mesh for the core sphere
     const newGeometry = new THREE.SphereGeometry(this.radius, 32, 32);
     this.mesh.geometry.dispose();
     this.mesh.geometry = newGeometry;
 
-    // Reposition attached meshes based on new radius while maintaining their relative positions
     this.attachedMeshes.forEach(attached => {
       const newPos = attached.direction.clone().multiplyScalar(this.radius);
       attached.mesh.position.copy(newPos);

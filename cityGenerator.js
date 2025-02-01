@@ -7,19 +7,6 @@ export class CityGenerator {
     this.objects = new Map();
     this.minObjectSize = 0.2;   // Minimum size for collectibles
     this.maxObjectSize = 15;    // Maximum size for buildings
-    this.renderDistance = 2;  // Default render distance
-  }
-
-  setRenderDistance(distance) {
-    if (this.renderDistance !== distance) {
-      this.renderDistance = distance;
-      // Clear all chunks and regenerate based on new render distance
-      Array.from(this.loadedChunks).forEach(key => {
-        const [x, z] = key.split(',').map(Number);
-        this.removeChunk({ x, z });
-      });
-      this.loadedChunks.clear();
-    }
   }
 
   update(playerPosition) {
@@ -43,7 +30,7 @@ export class CityGenerator {
         Math.pow(z - currentChunk.z, 2)
       );
       
-      if (distance > this.renderDistance) {
+      if (distance > 2) {
         this.removeChunk({ x, z });
         this.loadedChunks.delete(key);
       }
@@ -59,8 +46,8 @@ export class CityGenerator {
 
   getNearbyChunks(chunk) {
     const nearby = [];
-    for (let dx = -this.renderDistance; dx <= this.renderDistance; dx++) {
-      for (let dz = -this.renderDistance; dz <= this.renderDistance; dz++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
         nearby.push({
           x: chunk.x + dx,
           z: chunk.z + dz
@@ -108,8 +95,54 @@ export class CityGenerator {
       return attempts < 50 ? { x, z } : null;
     };
 
+    // Reduce number of objects per chunk
+    const objectCounts = {
+      tiny: 25,    // Reduced from 50
+      medium: 15,  // Reduced from 25
+      large: 5,    // Reduced from 10
+      buildings: 6 // Reduced from 12
+    };
+
+    // Create geometry and material pools to reuse
+    const geometryPool = {
+      sphere: new THREE.IcosahedronGeometry(1, 0), // Reduced geometry complexity
+      box: new THREE.BoxGeometry(1, 1, 1),
+      cylinder: new THREE.CylinderGeometry(1, 1, 1, 6) // Reduced segments
+    };
+
+    const materialPool = new Map();
+    const getMaterial = (color) => {
+      if (!materialPool.has(color)) {
+        materialPool.set(color, new THREE.MeshPhongMaterial({ 
+          color, 
+          flatShading: true 
+        }));
+      }
+      return materialPool.get(color);
+    };
+
+    // Optimize window generation
+    const createWindows = (width, height) => {
+      const windowGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.1);
+      const windowMaterial = getMaterial(0x88CCFF);
+      const windowGroup = new THREE.Group();
+
+      // Reduce window density
+      const spacing = 2;
+      for (let y = 1; y < height - 1; y += spacing) {
+        for (let x = -width/2 + 1; x < width/2; x += spacing) {
+          if (Math.random() < 0.5) {
+            const windowPane = new THREE.Mesh(windowGeometry, windowMaterial);
+            windowPane.position.set(x, y, width/2 + 0.1);
+            windowGroup.add(windowPane);
+          }
+        }
+      }
+      return windowGroup;
+    };
+
     // Generate tiny collectibles (leaves, papers, etc)
-    for (let i = 0; i < 50; i++) {  
+    for (let i = 0; i < objectCounts.tiny; i++) {  
       const size = this.minObjectSize + Math.random() * 0.3;
       const pos = getValidPosition(size);
       if (!pos) continue;
@@ -117,23 +150,17 @@ export class CityGenerator {
       let mesh;
       if (Math.random() < 0.5) {
         // Paper-like object
-        const geometry = new THREE.PlaneGeometry(size * 2, size * 2);
-        const material = new THREE.MeshPhongMaterial({ 
-          color: 0xFFFFFF,
-          side: THREE.DoubleSide,
-          flatShading: true
-        });
+        const geometry = geometryPool.box.clone();
+        geometry.scale(size * 2, size * 2, size * 2);
+        const material = getMaterial(0xFFFFFF);
         mesh = new THREE.Mesh(geometry, material);
         mesh.rotation.x = Math.random() * Math.PI;
         mesh.rotation.y = Math.random() * Math.PI;
       } else {
         // Crumpled paper ball or small debris
-        const geometry = new THREE.IcosahedronGeometry(size, 1);
-        const material = new THREE.MeshPhongMaterial({ 
-          color: this.getRandomColor(),
-          flatShading: true,
-          shininess: 0
-        });
+        const geometry = geometryPool.sphere.clone();
+        geometry.scale(size, size, size);
+        const material = getMaterial(this.getRandomColor());
         mesh = new THREE.Mesh(geometry, material);
       }
       mesh.position.set(pos.x, size, pos.z);
@@ -151,7 +178,7 @@ export class CityGenerator {
     }
 
     // Generate medium collectibles (trash bins, boxes, etc)
-    for (let i = 0; i < 25; i++) {  
+    for (let i = 0; i < objectCounts.medium; i++) {  
       const size = 0.5 + Math.random() * 2;
       const pos = getValidPosition(size);
       if (!pos) continue;
@@ -162,16 +189,15 @@ export class CityGenerator {
         const group = new THREE.Group();
         
         // Main body
-        const bodyGeometry = new THREE.CylinderGeometry(size/2, size/2 * 0.8, size, 8);
-        const bodyMaterial = new THREE.MeshPhongMaterial({ 
-          color: this.getRandomColor(),
-          flatShading: true
-        });
+        const bodyGeometry = geometryPool.cylinder.clone();
+        bodyGeometry.scale(size/2, size, size/2);
+        const bodyMaterial = getMaterial(this.getRandomColor());
         const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
         group.add(body);
         
         // Rim
-        const rimGeometry = new THREE.TorusGeometry(size/2 * 1.1, size/10, 8, 8);
+        const rimGeometry = geometryPool.cylinder.clone();
+        rimGeometry.scale(size/2 * 1.1, size/10, size/2 * 1.1);
         const rim = new THREE.Mesh(rimGeometry, bodyMaterial);
         rim.position.y = size/2;
         group.add(rim);
@@ -182,20 +208,16 @@ export class CityGenerator {
         const group = new THREE.Group();
         
         // Main box
-        const boxGeometry = new THREE.BoxGeometry(size, size, size);
-        const boxMaterial = new THREE.MeshPhongMaterial({ 
-          color: this.getRandomColor(),
-          flatShading: true
-        });
+        const boxGeometry = geometryPool.box.clone();
+        boxGeometry.scale(size, size, size);
+        const boxMaterial = getMaterial(this.getRandomColor());
         const box = new THREE.Mesh(boxGeometry, boxMaterial);
         group.add(box);
         
         // Edge details
-        const edgeGeometry = new THREE.BoxGeometry(size * 1.1, size/10, size * 1.1);
-        const edgeMaterial = new THREE.MeshPhongMaterial({ 
-          color: 0x333333,
-          flatShading: true
-        });
+        const edgeGeometry = geometryPool.box.clone();
+        edgeGeometry.scale(size * 1.1, size/10, size * 1.1);
+        const edgeMaterial = getMaterial(0x333333);
         const topEdge = new THREE.Mesh(edgeGeometry, edgeMaterial);
         topEdge.position.y = size/2;
         group.add(topEdge);
@@ -218,7 +240,7 @@ export class CityGenerator {
     }
 
     // Generate large objects (cars, small structures)
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < objectCounts.large; i++) {
       const size = 2 + Math.random() * 3;
       const pos = getValidPosition(size * 2);
       if (!pos) continue;
@@ -228,24 +250,24 @@ export class CityGenerator {
       if (Math.random() < 0.5) {
         // Car
         // Main body
-        const bodyGeometry = new THREE.BoxGeometry(size * 2, size * 0.8, size * 1.5);
-        const bodyMaterial = new THREE.MeshPhongMaterial({ 
-          color: this.getRandomColor(),
-          flatShading: true
-        });
+        const bodyGeometry = geometryPool.box.clone();
+        bodyGeometry.scale(size * 2, size * 0.8, size * 1.5);
+        const bodyMaterial = getMaterial(this.getRandomColor());
         const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
         group.add(body);
         
         // Top/cabin
-        const cabinGeometry = new THREE.BoxGeometry(size * 1.2, size * 0.6, size);
+        const cabinGeometry = geometryPool.box.clone();
+        cabinGeometry.scale(size * 1.2, size * 0.6, size);
         const cabin = new THREE.Mesh(cabinGeometry, bodyMaterial);
         cabin.position.y = size * 0.7;
         cabin.position.z = -size * 0.2;
         group.add(cabin);
         
         // Wheels
-        const wheelGeometry = new THREE.CylinderGeometry(size * 0.3, size * 0.3, size * 0.2, 8);
-        const wheelMaterial = new THREE.MeshPhongMaterial({ color: 0x333333 });
+        const wheelGeometry = geometryPool.cylinder.clone();
+        wheelGeometry.scale(size * 0.3, size * 0.2, size * 0.3);
+        const wheelMaterial = getMaterial(0x333333);
         for (let w = 0; w < 4; w++) {
           const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
           wheel.rotation.z = Math.PI/2;
@@ -258,15 +280,9 @@ export class CityGenerator {
         // Structure
         const levels = 2 + Math.floor(Math.random() * 3);
         for (let l = 0; l < levels; l++) {
-          const levelGeometry = new THREE.BoxGeometry(
-            size * (1 - l * 0.2),
-            size,
-            size * (1 - l * 0.2)
-          );
-          const levelMaterial = new THREE.MeshPhongMaterial({ 
-            color: 0x808080,
-            flatShading: true
-          });
+          const levelGeometry = geometryPool.box.clone();
+          levelGeometry.scale(size * (1 - l * 0.2), size, size * (1 - l * 0.2));
+          const levelMaterial = getMaterial(0x808080);
           const level = new THREE.Mesh(levelGeometry, levelMaterial);
           level.position.y = l * size;
           group.add(level);
@@ -288,7 +304,7 @@ export class CityGenerator {
     }
     
     // Generate buildings
-    for (let i = 0; i < 12; i++) {  
+    for (let i = 0; i < objectCounts.buildings; i++) {  
       const width = 3 + Math.random() * 5;   
       const height = 6 + Math.random() * 14;
       const size = Math.max(width, height);
@@ -299,46 +315,22 @@ export class CityGenerator {
       const group = new THREE.Group();
       
       // Main building structure
-      const buildingGeometry = new THREE.BoxGeometry(width, height, width);
-      const buildingMaterial = new THREE.MeshPhongMaterial({ 
-        color: 0x808080,
-        flatShading: true
-      });
+      const buildingGeometry = geometryPool.box.clone();
+      buildingGeometry.scale(width, height, width);
+      const buildingMaterial = getMaterial(0x808080);
       const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
       group.add(building);
       
       // Add windows
-      const windowMaterial = new THREE.MeshPhongMaterial({ 
-        color: 0x88CCFF,
-        flatShading: true
-      });
-      const windowSize = 0.3;
-      const windowSpacing = 1;
-      for (let y = 1; y < height - 1; y += windowSpacing) {
-        for (let x = -width/2 + 1; x < width/2; x += windowSpacing) {
-          for (let z = -width/2 + 1; z < width/2; z += windowSpacing) {
-            if (Math.random() < 0.7) {
-              const windowGeometry = new THREE.BoxGeometry(windowSize, windowSize, 0.1);
-              const windowPane = new THREE.Mesh(windowGeometry, windowMaterial);
-              windowPane.position.set(x, y, width/2 + 0.1);
-              group.add(windowPane.clone());
-              windowPane.position.set(x, y, -width/2 - 0.1);
-              group.add(windowPane.clone());
-              windowPane.rotation.y = Math.PI/2;
-              windowPane.position.set(width/2 + 0.1, y, z);
-              group.add(windowPane.clone());
-              windowPane.position.set(-width/2 - 0.1, y, z);
-              group.add(windowPane.clone());
-            }
-          }
-        }
-      }
+      const windows = createWindows(width, height);
+      group.add(windows);
       
       // Add roof details
       const roofDetail = new THREE.Mesh(
-        new THREE.BoxGeometry(width * 0.7, height * 0.1, width * 0.7),
+        geometryPool.box.clone(),
         buildingMaterial
       );
+      roofDetail.scale(width * 0.7, height * 0.1, width * 0.7);
       roofDetail.position.y = height/2 + height * 0.05;
       group.add(roofDetail);
       
@@ -364,6 +356,15 @@ export class CityGenerator {
     const objects = this.objects.get(key);
     if (objects) {
       objects.forEach(obj => {
+        // Properly dispose of geometries and materials
+        if (obj.mesh.geometry) obj.mesh.geometry.dispose();
+        if (obj.mesh.material) {
+          if (Array.isArray(obj.mesh.material)) {
+            obj.mesh.material.forEach(m => m.dispose());
+          } else {
+            obj.mesh.material.dispose();
+          }
+        }
         this.scene.remove(obj.mesh);
         this.world.remove(obj.body);
       });
