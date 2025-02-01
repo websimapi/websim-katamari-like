@@ -45,6 +45,16 @@ class Game {
       { once: true }
     );
 
+    // Add render distance slider handler
+    const renderSlider = document.getElementById('render-slider');
+    const renderValue = document.getElementById('render-value');
+    
+    renderSlider.addEventListener('input', (e) => {
+      const distance = parseInt(e.target.value);
+      renderValue.textContent = distance;
+      this.cityGenerator.setRenderDistance(distance);
+    });
+
     this.start();
   }
 

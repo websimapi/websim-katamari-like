@@ -7,6 +7,19 @@ export class CityGenerator {
     this.objects = new Map();
     this.minObjectSize = 0.2;   // Minimum size for collectibles
     this.maxObjectSize = 15;    // Maximum size for buildings
+    this.renderDistance = 2;  // Default render distance
+  }
+
+  setRenderDistance(distance) {
+    if (this.renderDistance !== distance) {
+      this.renderDistance = distance;
+      // Clear all chunks and regenerate based on new render distance
+      Array.from(this.loadedChunks).forEach(key => {
+        const [x, z] = key.split(',').map(Number);
+        this.removeChunk({ x, z });
+      });
+      this.loadedChunks.clear();
+    }
   }
 
   update(playerPosition) {
@@ -30,7 +43,7 @@ export class CityGenerator {
         Math.pow(z - currentChunk.z, 2)
       );
       
-      if (distance > 2) {
+      if (distance > this.renderDistance) {
         this.removeChunk({ x, z });
         this.loadedChunks.delete(key);
       }
@@ -46,8 +59,8 @@ export class CityGenerator {
 
   getNearbyChunks(chunk) {
     const nearby = [];
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dz = -1; dz <= 1; dz++) {
+    for (let dx = -this.renderDistance; dx <= this.renderDistance; dx++) {
+      for (let dz = -this.renderDistance; dz <= this.renderDistance; dz++) {
         nearby.push({
           x: chunk.x + dx,
           z: chunk.z + dz
