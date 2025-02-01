@@ -61,11 +61,34 @@ export class CityGenerator {
   }
 
   generateChunk(chunk) {
-    // Using separate arrays for ground objects and flying creatures.
+    // Create separate arrays for ground objects and flying creatures.
     const groundObjects = [];
     const flyingCreatures = [];
     const occupiedSpaces = new Set();
-    
+
+    // Seeded random generator based on chunk coordinates.
+    // Using a simple LCG: seedValue will be updated every call to r()
+    let seedValue = (((chunk.x + 1000) * 10000) + (chunk.z + 1000)) % 233280;
+    function r() {
+      seedValue = (seedValue * 9301 + 49297) % 233280;
+      return seedValue / 233280;
+    }
+
+    // Seeded version for color selection
+    const seededGetRandomColor = () => {
+      const colors = [
+        0xFF0000, 
+        0x00FF00, 
+        0x0000FF, 
+        0xFFFF00, 
+        0xFF00FF, 
+        0x00FFFF, 
+        0xFFA500, 
+        0x800080  
+      ];
+      return colors[Math.floor(r() * colors.length)];
+    };
+
     // Function to check if a position is too close to existing objects
     const isSpaceOccupied = (x, z, size) => {
       const gridSize = Math.ceil(size);
@@ -89,8 +112,8 @@ export class CityGenerator {
       let attempts = 0;
       let x, z;
       do {
-        x = (chunk.x * this.chunkSize) + (size * 2) + Math.random() * (this.chunkSize - size * 4);
-        z = (chunk.z * this.chunkSize) + (size * 2) + Math.random() * (this.chunkSize - size * 4);
+        x = (chunk.x * this.chunkSize) + (size * 2) + r() * (this.chunkSize - size * 4);
+        z = (chunk.z * this.chunkSize) + (size * 2) + r() * (this.chunkSize - size * 4);
         attempts++;
       } while (isSpaceOccupied(x, z, size) && attempts < 50);
       
@@ -129,7 +152,7 @@ export class CityGenerator {
       const spacing = 2;
       for (let y = 1; y < height - 1; y += spacing) {
         for (let x = -width/2 + 1; x < width/2; x += spacing) {
-          if (Math.random() < 0.5) {
+          if (r() < 0.5) {
             const windowPane = new THREE.Mesh(windowGeometry, windowMaterial);
             windowPane.position.set(x, y, width/2 + 0.1);
             windowGroup.add(windowPane);
@@ -141,23 +164,23 @@ export class CityGenerator {
 
     // Generate tiny collectibles
     for (let i = 0; i < objectCounts.tiny; i++) {  
-      const size = this.minObjectSize + Math.random() * 0.3;
+      const size = this.minObjectSize + r() * 0.3;
       const pos = getValidPosition(size);
       if (!pos) continue;
       
       let mesh;
-      if (Math.random() < 0.5) {
+      if (r() < 0.5) {
         const geometry = geometryPool.box.clone();
         geometry.scale(size * 2, size * 2, size * 2);
         const material = getMaterial(0xFFFFFF);
         mesh = new THREE.Mesh(geometry, material);
-        mesh.rotation.x = Math.random() * Math.PI;
-        mesh.rotation.y = Math.random() * Math.PI;
+        mesh.rotation.x = r() * Math.PI;
+        mesh.rotation.y = r() * Math.PI;
         mesh.userData.itemName = "Paper";
       } else {
         const geometry = geometryPool.sphere.clone();
         geometry.scale(size, size, size);
-        const material = getMaterial(this.getRandomColor());
+        const material = getMaterial(seededGetRandomColor());
         mesh = new THREE.Mesh(geometry, material);
         mesh.userData.itemName = "Crumpled Paper Ball";
       }
@@ -177,16 +200,16 @@ export class CityGenerator {
 
     // Generate medium collectibles
     for (let i = 0; i < objectCounts.medium; i++) {  
-      const size = 0.5 + Math.random() * 2;
+      const size = 0.5 + r() * 2;
       const pos = getValidPosition(size);
       if (!pos) continue;
       
       let mesh;
-      if (Math.random() < 0.5) {
+      if (r() < 0.5) {
         const group = new THREE.Group();
         const bodyGeometry = geometryPool.cylinder.clone();
         bodyGeometry.scale(size/2, size, size/2);
-        const bodyMaterial = getMaterial(this.getRandomColor());
+        const bodyMaterial = getMaterial(seededGetRandomColor());
         const bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
         group.add(bodyMesh);
         const rimGeometry = geometryPool.cylinder.clone();
@@ -200,7 +223,7 @@ export class CityGenerator {
         const group = new THREE.Group();
         const boxGeometry = geometryPool.box.clone();
         boxGeometry.scale(size, size, size);
-        const boxMaterial = getMaterial(this.getRandomColor());
+        const boxMaterial = getMaterial(seededGetRandomColor());
         const boxMesh = new THREE.Mesh(boxGeometry, boxMaterial);
         group.add(boxMesh);
         const edgeGeometry = geometryPool.box.clone();
@@ -229,16 +252,16 @@ export class CityGenerator {
 
     // Generate large objects
     for (let i = 0; i < objectCounts.large; i++) {
-      const size = 2 + Math.random() * 3;
+      const size = 2 + r() * 3;
       const pos = getValidPosition(size * 2);
       if (!pos) continue;
       
       const group = new THREE.Group();
       
-      if (Math.random() < 0.5) {
+      if (r() < 0.5) {
         const bodyGeometry = geometryPool.box.clone();
         bodyGeometry.scale(size * 2, size * 0.8, size * 1.5);
-        const bodyMaterial = getMaterial(this.getRandomColor());
+        const bodyMaterial = getMaterial(seededGetRandomColor());
         const bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
         group.add(bodyMesh);
         const cabinGeometry = geometryPool.box.clone();
@@ -260,7 +283,7 @@ export class CityGenerator {
         }
         group.userData.itemName = "Car";
       } else {
-        const levels = 2 + Math.floor(Math.random() * 3);
+        const levels = 2 + Math.floor(r() * 3);
         for (let l = 0; l < levels; l++) {
           const levelGeometry = geometryPool.box.clone();
           levelGeometry.scale(size * (1 - l * 0.2), size, size * (1 - l * 0.2));
@@ -288,8 +311,8 @@ export class CityGenerator {
     
     // Generate buildings
     for (let i = 0; i < objectCounts.buildings; i++) {  
-      const width = 3 + Math.random() * 5;   
-      const height = 6 + Math.random() * 14;
+      const width = 3 + r() * 5;   
+      const height = 6 + r() * 14;
       const size = Math.max(width, height);
       
       const pos = getValidPosition(width);
@@ -330,15 +353,13 @@ export class CityGenerator {
     }
     
     // Generate flying creatures within this chunk
-    // We'll create between 3 to 5 flying creatures of random types
     const flyingTypes = ['butterfly', 'eagle', 'bee'];
-    const flyingCount = 3 + Math.floor(Math.random() * 3);
+    const flyingCount = 3 + Math.floor(r() * 3);
     for (let i = 0; i < flyingCount; i++) {
-      const type = flyingTypes[Math.floor(Math.random() * flyingTypes.length)];
-      // Position: random x, z within the chunk and y between 15 and 50
-      const x = (chunk.x * this.chunkSize) + Math.random() * this.chunkSize;
-      const z = (chunk.z * this.chunkSize) + Math.random() * this.chunkSize;
-      const y = 15 + Math.random() * 35;
+      const type = flyingTypes[Math.floor(r() * flyingTypes.length)];
+      const x = (chunk.x * this.chunkSize) + r() * this.chunkSize;
+      const z = (chunk.z * this.chunkSize) + r() * this.chunkSize;
+      const y = 15 + r() * 35;
       const position = new THREE.Vector3(x, y, z);
       const creature = new FlyingCreature(this.scene, type, position);
       flyingCreatures.push(creature);
@@ -374,6 +395,7 @@ export class CityGenerator {
   }
 
   getRandomColor() {
+    // Fallback method if needed outside seeded context
     const colors = [
       0xFF0000, 
       0x00FF00, 

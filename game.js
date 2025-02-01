@@ -1,6 +1,7 @@
 import { CityGenerator } from './cityGenerator.js';
 import { PlayerBall } from './playerBall.js';
 import { PickupPreview } from './pickupPreview.js';
+import { Minimap } from './minimap.js';
 
 class Game {
   constructor() {
@@ -22,8 +23,12 @@ class Game {
     this.setupLights();
 
     // Create the city and player
+    // Spawn player near origin so that all players are close together
     this.cityGenerator = new CityGenerator(this.scene, this.world);
     this.player = new PlayerBall(this.scene, this.world);
+    // Ensure initial player position is near the center.
+    this.player.body.position.set(0, this.player.radius, 0);
+    this.player.mesh.position.copy(this.player.body.position);
 
     // Add ground
     this.addGround();
@@ -72,6 +77,9 @@ class Game {
 
     // Initialize the pickup preview UI
     this.pickupPreview = new PickupPreview();
+
+    // Initialize the minimap
+    this.minimap = new Minimap();
 
     // Demo mode variables for title screen
     this.demoTimer = 0;
@@ -448,6 +456,9 @@ class Game {
         });
         this.lastSentPosition = performance.now();
       }
+
+      // Update the minimap with local player and peer positions
+      this.minimap.update(this.player, this.peerPlayers);
 
       this.renderer.render(this.scene, this.camera);
       this.frame++;
