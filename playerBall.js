@@ -64,7 +64,7 @@ export class PlayerBall {
         y: force.y / inputForceMagnitude
       };
 
-      const baseAcceleration = 40; 
+      const baseAcceleration = 80; 
       const boostMultiplier = 5;   
       const currentTime = performance.now();
 
@@ -200,7 +200,11 @@ export class PlayerBall {
     const newRadius = Math.pow((3 * newVolume) / (4 * Math.PI), 1 / 3);
 
     this.radius = newRadius;
-    this.body.shapes[0].radius = this.radius;
+    if (this.body.shapes[0] instanceof CANNON.Sphere) {
+      this.body.shapes[0].radius = this.radius;
+    }
+    this.body.updateBoundingRadius();
+    this.body.updateMassProperties();
 
     const newGeometry = new THREE.SphereGeometry(this.radius, 32, 32);
     this.mesh.geometry.dispose();

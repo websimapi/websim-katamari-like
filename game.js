@@ -101,7 +101,7 @@ class Game {
 
   setupPhysics() {
     this.world = new CANNON.World();
-    this.world.gravity.set(0, -20, 0); 
+    this.world.gravity.set(0, -30, 0); 
     this.world.broadphase = new CANNON.NaiveBroadphase();
     this.world.solver.iterations = 10;
     this.world.defaultContactMaterial.friction = 0.5;
@@ -356,6 +356,11 @@ class Game {
       requestAnimationFrame(animate);
 
       const delta = this.clock.getDelta();
+      this.world.bodies.slice().forEach(b => {
+        if (!b.shapes || b.shapes.length === 0) {
+          this.world.removeBody(b);
+        }
+      });
       this.world.step(this.fixedTimeStep, delta, this.maxSubSteps);
       
       this.player.update();
