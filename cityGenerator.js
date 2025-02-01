@@ -93,10 +93,11 @@ export class CityGenerator {
     };
 
     const objectCounts = {
-      tiny: 25,
+      tiny: 25,  // Star Dust count
       medium: 15,
       large: 5,
-      buildings: 6
+      buildings: 6,
+      unique: 15  // Increased unique object count
     };
 
     const geometryPool = {
@@ -133,33 +134,20 @@ export class CityGenerator {
       return windowGroup;
     };
 
-    // Generate tiny collectibles as "Star Dust" in the sky
+    // Generate Star Dust in the sky (tiny objects)
     for (let i = 0; i < objectCounts.tiny; i++) {  
       const size = this.minObjectSize + Math.random() * 0.3;
       const pos = getValidPosition(size);
       if (!pos) continue;
       
-      let mesh;
-      // Determine a random altitude for star dust floating in the air
       const starAltitude = 20 + Math.random() * 10;
+      const geometry = geometryPool.sphere.clone();
+      geometry.scale(size, size, size);
+      const material = getMaterial(0xFFFFFF);
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.userData.itemName = "Star Dust";
+      mesh.userData.isStarDust = true; // Flag for glow effect
       
-      // Both variants now become "Star Dust"
-      if (Math.random() < 0.5) {
-        const geometry = geometryPool.box.clone();
-        geometry.scale(size * 2, size * 2, size * 2);
-        const material = getMaterial(0xFFFFFF);
-        mesh = new THREE.Mesh(geometry, material);
-        mesh.rotation.x = Math.random() * Math.PI;
-        mesh.rotation.y = Math.random() * Math.PI;
-        mesh.userData.itemName = "Star Dust";
-      } else {
-        const geometry = geometryPool.sphere.clone();
-        geometry.scale(size, size, size);
-        const material = getMaterial(this.getRandomColor());
-        mesh = new THREE.Mesh(geometry, material);
-        mesh.userData.itemName = "Star Dust";
-      }
-      // Position the star dust high in the air instead of on the ground
       mesh.position.set(pos.x, starAltitude, pos.z);
       this.scene.add(mesh);
 
@@ -169,7 +157,6 @@ export class CityGenerator {
         shape: shape,
         position: new CANNON.Vec3(pos.x, starAltitude, pos.z)
       });
-      // Increase damping so that the star dust lingers in the air without falling too fast
       body.linearDamping = 0.9;
       this.world.addBody(body);
 
@@ -287,17 +274,45 @@ export class CityGenerator {
       objects.push({ mesh: group, body });
     }
     
-    // Generate unique silly objects on the ground
-    // Expanded list of unique types
-    const uniqueTypes = ["Carrot", "Frying Pan", "Boat", "Fish", "Number 3", "UFO", "Rubber Duck", "Cupcake", "Sunglasses", "Banana"];
-    const uniqueCount = 10; // Increased number of unique objects per chunk
-    for (let i = 0; i < uniqueCount; i++) {
-      // Use an average size for unique objects
+    // Generate unique objects
+    const uniqueTypes = [
+      "Carrot", "Frying Pan", "Boat", "Fish", "Number 3", "UFO", 
+      "Rubber Duck", "Cupcake", "Sunglasses", "Banana", "Pizza", 
+      "Guitar", "Top Hat", "Ice Cream Cone", "Coffee Cup",
+      "Umbrella", "Rainbow", "Pencil", "Clock", "Crown"
+    ];
+
+    // Load trash bin model
+    const loader = new THREE.GLTFLoader();
+    loader.load('trash_bin.glb', (gltf) => {
+      for (let i = 0; i < 5; i++) {
+        const pos = getValidPosition(1);
+        if (!pos) continue;
+        
+        const trashBin = gltf.scene.clone();
+        trashBin.scale.set(0.5, 0.5, 0.5);
+        trashBin.position.set(pos.x, 0.5, pos.z);
+        trashBin.userData.itemName = "Trash Bin";
+        this.scene.add(trashBin);
+
+        const shape = new CANNON.Box(new CANNON.Vec3(0.5, 0.75, 0.5));
+        const body = new CANNON.Body({
+          mass: 5,
+          shape: shape,
+          position: new CANNON.Vec3(pos.x, 0.75, pos.z)
+        });
+        this.world.addBody(body);
+
+        objects.push({ mesh: trashBin, body });
+      }
+    });
+
+    for (let i = 0; i < objectCounts.unique; i++) {
       const size = 1 + Math.random();
-      const posUnique = getValidPosition(size);
-      if (!posUnique) continue;
+      const pos = getValidPosition(size);
+      if (!pos) continue;
       const type = uniqueTypes[Math.floor(Math.random() * uniqueTypes.length)];
-      const uniqueObject = this.createUniqueObject(type, posUnique, size);
+      const uniqueObject = this.createUniqueObject(type, pos, size);
       if (uniqueObject) {
         objects.push(uniqueObject);
       }
@@ -485,6 +500,32 @@ export class CityGenerator {
       width = size * 2;
       height = size;
       depth = size;
+    } else if (type === "Pizza") {
+      const baseGeo = new THREE.CylinderGeometry(size, size, size * 0.1, 8);
+      const baseMat = new THREE.MeshPhongMaterial({ color: 0xFFA07A });
+      const base = new THREE.Mesh(baseGeo, baseMat);
+      group.add(base);
+      group.userData.itemName = "Pizza";
+    } else if (type === "Guitar") {
+      const bodyGeo = new THREE.BoxGeometry(size * 0.8, size * 0.2, size * 2);
+      const neckGeo = new THREE.BoxGeometry(size * 0.2, size * 0.1, size);
+      const bodyMat = new THREE.MeshPhongMaterial({ color: 0x8B4513 });
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      const neck = new THREE.Mesh(neckGeo, bodyMat);
+      neck.position.z = -size * 1.5;
+      group.add(body);
+      group.add(neck);
+      group.userData.itemName = "Guitar";
+    } else if (type === "Top Hat") {
+      const brimGeo = new THREE.CylinderGeometry(size * 0.8, size * 0.8, size * 0.1, 32);
+      const topGeo = new THREE.CylinderGeometry(size * 0.6, size * 0.6, size, 32);
+      const hatMat = new THREE.MeshPhongMaterial({ color: 0x000000 });
+      const brim = new THREE.Mesh(brimGeo, hatMat);
+      const top = new THREE.Mesh(topGeo, hatMat);
+      top.position.y = size * 0.5;
+      group.add(brim);
+      group.add(top);
+      group.userData.itemName = "Top Hat";
     }
     group.position.set(pos.x, (height / 2), pos.z);
     const shape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));

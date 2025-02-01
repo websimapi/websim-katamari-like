@@ -317,13 +317,8 @@ class Game {
       objects.forEach((obj) => {
         if (!obj.mesh) return;
         // Only apply glowing to Star Dust items
-        if (obj.mesh.userData.itemName !== "Star Dust") return;
-        const objectSize = obj.body.shapes[0].radius ||
-          Math.max(
-            obj.body.shapes[0].halfExtents.x,
-            obj.body.shapes[0].halfExtents.y,
-            obj.body.shapes[0].halfExtents.z
-          );
+        if (!obj.mesh.userData.isStarDust) return;
+
         this._temp.set(
           obj.body.position.x,
           obj.body.position.y,
@@ -332,21 +327,20 @@ class Game {
         
         const distance = this._temp.distanceTo(this._playerPos);
 
-        if (objectSize < playerRadius && distance < glowRange) {
+        if (distance < glowRange) {
           if (!obj.mesh.userData.isGlowing) {
             obj.mesh.userData.isGlowing = true;
             if (!obj.mesh.userData.emissiveMaterial) {
               obj.mesh.userData.emissiveMaterial = new THREE.MeshPhongMaterial({
-                color: obj.mesh.material.color,
-                emissive: obj.mesh.material.color,
-                emissiveIntensity: 0.5,
-                flatShading: true
+                color: 0xFFFFFF,
+                emissive: 0xFFFFFF,
+                emissiveIntensity: 0.5
               });
               obj.mesh.userData.originalMaterial = obj.mesh.material;
             }
             obj.mesh.material = obj.mesh.userData.emissiveMaterial;
           }
-          // Pulse the glow effect over time
+          // Pulse the glow effect
           const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.005);
           obj.mesh.material.emissiveIntensity = pulse;
         } else if (obj.mesh.userData.isGlowing) {
