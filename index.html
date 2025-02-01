@@ -6,6 +6,13 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <!-- Title Screen Overlay -->
+  <div id="title-screen">
+    <h1>3D Katamari-like</h1>
+    <p>Watch the demo…</p>
+    <p class="tap">Tap anywhere to start!</p>
+  </div>
+  
   <div id="game-container">
     <canvas id="gameCanvas"></canvas>
     <div id="ui">
@@ -15,12 +22,24 @@
       <div id="mobile-controls">
         <div id="joystick-area"></div>
       </div>
+      <!-- Pickup Preview UI -->
+      <div id="pickup-preview">
+        <canvas id="pickup-canvas"></canvas>
+        <div id="pickup-name"></div>
+      </div>
     </div>
+    <!-- Minimap UI at top right -->
+    <div id="minimap-container">
+      <canvas id="minimap-canvas" width="150" height="150"></canvas>
+      <div id="record-btn" title="Record Clip"></div>
+    </div>
+    
+    <div id="mute-btn" title="Toggle Music"></div>
   </div>
   
   <!-- Load Three.js and its dependencies first -->
   <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/build/three.min.js"></script>
-  
+
   <!-- Load post-processing dependencies in correct order -->
   <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/postprocessing/Pass.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/shaders/CopyShader.js"></script>
@@ -33,6 +52,28 @@
   <!-- Load other dependencies -->
   <script src="https://cdn.jsdelivr.net/npm/cannon@0.6.2/build/cannon.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.10.1/dist/nipplejs.min.js"></script>
+
+  <!-- Import map for module imports -->
+  <script type="importmap">
+    {
+      "imports": {
+        "./playerBall.js": "./playerBall.js",
+        "./cityGenerator.js": "./cityGenerator.js",
+        "./Human.js": "./Human.js",
+        "./pickupPreview.js": "./pickupPreview.js",
+        "./minimap.js": "./minimap.js",
+        "./flyingCreatures.js": "./flyingCreatures.js",
+        "./InputController.js": "./InputController.js",
+        "./PhysicsManager.js": "./PhysicsManager.js",
+        "./CameraController.js": "./CameraController.js",
+        "./DemoController.js": "./DemoController.js",
+        "./CollisionHandler.js": "./CollisionHandler.js",
+        "./MultiplayerManager.js": "./MultiplayerManager.js",
+        "./SceneManager.js": "./SceneManager.js",
+        "./Recorder.js": "./Recorder.js"
+      }
+    }
+  </script>
 
   <!-- Load game code -->
   <script type="module" src="game.js"></script>

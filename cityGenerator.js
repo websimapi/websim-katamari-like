@@ -330,7 +330,7 @@ export class CityGenerator {
         geometryPool.box.clone(),
         buildingMaterial
       );
-      roofDetail.scale.set(width * 0.7, height * 0.1, width * 0.7);
+      roofDetail.scale(width * 0.7, height * 0.1, width * 0.7);
       roofDetail.position.y = height/2 + height * 0.05;
       group.add(roofDetail);
       
@@ -366,7 +366,7 @@ export class CityGenerator {
           }
         }
         this.scene.remove(obj.mesh);
-        this.world.removeBody(obj.body);
+        this.world.remove(obj.body);
       });
       this.objects.delete(key);
     }
