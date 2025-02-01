@@ -1,5 +1,5 @@
 export class CityGenerator {
-  constructor(scene, world) {
+  constructor(scene, world, camera) {
     this.scene = scene;
     this.world = world;
     this.chunkSize = 100;
@@ -7,14 +7,63 @@ export class CityGenerator {
     this.objects = new Map();
     this.minObjectSize = 0.2;   // Minimum size for collectibles
     this.maxObjectSize = 15;    // Maximum size for buildings
+    
+    // Object pooling
+    this.objectPool = new Map();
+    this.initObjectPool();
+    
+    // Frustum culling 
+    this.frustum = new THREE.Frustum();
+    this.projScreenMatrix = new THREE.Matrix4();
+    this.camera = camera;
+    
+    // Spatial hash grid for faster collision checks
+    this.spatialGrid = new Map();
+    this.gridSize = 50;
+  }
+
+  initObjectPool() {
+    // Pre-create common geometries
+    this.geometries = {
+      sphere: new THREE.SphereGeometry(1, 8, 8),
+      box: new THREE.BoxGeometry(1, 1, 1),
+      cylinder: new THREE.CylinderGeometry(1, 1, 1, 8)
+    };
+    
+    // Pre-create common materials
+    this.materials = new Map();
+  }
+
+  getMaterial(color) {
+    if (!this.materials.has(color)) {
+      this.materials.set(color, new THREE.MeshPhongMaterial({ 
+        color, 
+        flatShading: true 
+      }));
+    }
+    return this.materials.get(color);
   }
 
   update(playerPosition) {
+    // Update frustum for culling
+    this.frustum.setFromProjectionMatrix(
+      this.projScreenMatrix.multiplyMatrices(
+        this.camera.projectionMatrix, 
+        this.camera.matrixWorldInverse
+      )
+    );
+    
     const currentChunk = this.getChunkCoords(playerPosition);
     const nearbyChunks = this.getNearbyChunks(currentChunk);
     
-    // Generate new chunks
+    // Only load chunks in view frustum
     nearbyChunks.forEach(chunk => {
+      if (!this.frustum.containsPoint(new THREE.Vector3(
+        chunk.x * this.chunkSize,
+        0,
+        chunk.z * this.chunkSize
+      ))) return;
+      
       const key = `${chunk.x},${chunk.z}`;
       if (!this.loadedChunks.has(key)) {
         this.generateChunk(chunk);
@@ -23,7 +72,7 @@ export class CityGenerator {
     });
 
     // Remove far chunks
-    this.loadedChunks.forEach(key => {
+    for (let key of this.loadedChunks) {
       const [x, z] = key.split(',').map(Number);
       const distance = Math.sqrt(
         Math.pow(x - currentChunk.x, 2) + 
@@ -34,7 +83,7 @@ export class CityGenerator {
         this.removeChunk({ x, z });
         this.loadedChunks.delete(key);
       }
-    });
+    }
   }
 
   getChunkCoords(position) {

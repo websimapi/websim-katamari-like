@@ -48,16 +48,40 @@ class Game {
     this.fixedTimeStep = 1.0 / 60.0;
     this.maxSubSteps = 3;
 
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // Optimize render quality vs performance
+    this.renderer.setPixelRatio(1); // Lock to 1 for better performance
+    this.renderer.powerPreference = "high-performance";
+    
+    // Optimize shadow settings
     this.renderer.shadowMap.enabled = false;
     
-    this.bloomPass.strength = 1.5;
+    // Reduce bloom intensity and quality for better performance
+    this.bloomPass.strength = 1.0;
     this.bloomPass.radius = 0.5;
     this.bloomPass.threshold = 0.85;
+    this.bloomPass.resolution = new THREE.Vector2(256, 256);
     
+    // Object pooling for particles
+    this.particlePool = [];
+    for(let i = 0; i < 100; i++) {
+      const particle = this.createParticle();
+      this.particlePool.push(particle);
+    }
+    
+    // Frame timing and throttling
+    this.lastFrameTime = 0;
+    this.frameInterval = 1000/60; // Target 60fps
+    
+    // Cache commonly used vectors
     this._playerPos = new THREE.Vector3();
     this._temp = new THREE.Vector3();
     
+    // Use worker for physics if available
+    if (window.Worker) {
+      this.physicsWorker = new Worker('physicsWorker.js');
+      this.physicsWorker.onmessage = (e) => this.updatePhysics(e.data);
+    }
+
     window.addEventListener('resize', this.onWindowResize.bind(this));
 
     // Initialize the pickup preview UI
@@ -352,15 +376,30 @@ class Game {
   }
 
   start() {
-    const animate = () => {
+    const animate = (timestamp) => {
       requestAnimationFrame(animate);
-
-      const delta = this.clock.getDelta();
-      this.world.step(this.fixedTimeStep, delta, this.maxSubSteps);
       
+      // Throttle frame rate
+      const elapsed = timestamp - this.lastFrameTime;
+      if (elapsed < this.frameInterval) return;
+      this.lastFrameTime = timestamp - (elapsed % this.frameInterval);
+
+      // Update physics on worker if available
+      if (this.physicsWorker) {
+        this.physicsWorker.postMessage({
+          playerPos: this.player.body.position,
+          deltaTime: elapsed / 1000
+        });
+      } else {
+        const delta = this.clock.getDelta();
+        this.world.step(this.fixedTimeStep, delta, this.maxSubSteps);
+      }
+
+      // Only update visible objects
       this.player.update();
       this.updateCamera();
       
+      // Throttle non-essential updates
       if (this.frame % 2 === 0) {
         this.cityGenerator.update(this.player.body.position);
         this.updateGlowingObjects();
@@ -372,6 +411,18 @@ class Game {
 
     this.frame = 0;
     animate();
+  }
+
+  createParticle() {
+    const geometry = new THREE.SphereGeometry(0.1, 4, 4);
+    const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    return new THREE.Mesh(geometry, material);
+  }
+
+  updatePhysics(data) {
+    // Update physics state from worker
+    Object.assign(this.player.body.position, data.playerPos);
+    Object.assign(this.player.body.velocity, data.playerVel);
   }
 }
 
