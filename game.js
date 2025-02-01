@@ -61,12 +61,6 @@ class Game {
     this.deviceMemory = deviceMemory;
     this.renderer.setPixelRatio(optimalPixelRatio);
 
-    // Remove Glow effect: No bloom or composer is used anymore
-
-    this.clock = new THREE.Clock();
-    this.fixedTimeStep = 1.0 / 60.0;
-    this.maxSubSteps = 3;
-
     // Shadows disabled for performance
     this.renderer.shadowMap.enabled = false;
     
@@ -108,7 +102,7 @@ class Game {
   }
 
   setupMultiplayer() {
-    // Handle incoming messages for peer ball updates and disconnections
+    // Handle incoming messages for peer ball updates, disconnections, and pickup removals
     this.room.onmessage = (event) => {
       const data = event.data;
       switch (data.type) {
@@ -180,6 +174,11 @@ class Game {
             this.scene.remove(this.peerPlayers[data.clientId]);
             delete this.peerPlayers[data.clientId];
           }
+          break;
+        case "object-picked-up":
+          // When a peer picks up an object, remove that object from our city as well.
+          // This ensures all peers see the same map data.
+          this.cityGenerator.removeObjectByBodyId(data.bodyId);
           break;
         default:
           // Handle other event types if needed
@@ -423,6 +422,12 @@ class Game {
               console.error('Error saving pickup record:', error);
             }
           })();
+
+          // Notify all peers to remove this object from their scenes
+          this.room.send({
+            type: "object-picked-up",
+            bodyId: object.body.id
+          });
         }
       }
     });
@@ -519,6 +524,9 @@ class Game {
     };
 
     this.frame = 0;
+    this.clock = new THREE.Clock();
+    this.fixedTimeStep = 1.0 / 60.0;
+    this.maxSubSteps = 3;
     animate();
   }
 }

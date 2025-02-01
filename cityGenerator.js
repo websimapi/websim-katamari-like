@@ -394,6 +394,29 @@ export class CityGenerator {
     }
   }
 
+  removeObjectByBodyId(bodyId) {
+    this.objects.forEach((chunkData, key) => {
+      for (let i = chunkData.ground.length - 1; i >= 0; i--) {
+        if (chunkData.ground[i].body.id === bodyId) {
+          const obj = chunkData.ground[i];
+          if (obj.mesh.geometry) obj.mesh.geometry.dispose();
+          if (obj.mesh.material) {
+            if (Array.isArray(obj.mesh.material)) {
+              obj.mesh.material.forEach(mat => mat.dispose());
+            } else {
+              obj.mesh.material.dispose();
+            }
+          }
+          this.scene.remove(obj.mesh);
+          this.world.removeBody(obj.body);
+          chunkData.ground.splice(i, 1);
+          // Found and removed, exit the loop.
+          return;
+        }
+      }
+    });
+  }
+
   getRandomColor() {
     // Fallback method if needed outside seeded context
     const colors = [
