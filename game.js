@@ -127,10 +127,19 @@ class Game {
             ballMesh.castShadow = true;
             group.add(ballMesh);
             group.userData.mainBallMesh = ballMesh;
-            // Add attachments as simple spheres
+            // Add attachments as simple spheres (will be updated below)
             if (data.attachedData) {
               data.attachedData.forEach(attachment => {
-                const attGeom = new THREE.SphereGeometry(0.1, 8, 8);
+                let attGeom;
+                if (attachment.geometryType === 'SphereGeometry') {
+                  attGeom = new THREE.SphereGeometry(0.1, 8, 8);
+                } else if (attachment.geometryType === 'BoxGeometry') {
+                  attGeom = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+                } else if (attachment.geometryType === 'CylinderGeometry') {
+                  attGeom = new THREE.CylinderGeometry(0.1, 0.1, 0.2, 8);
+                } else {
+                  attGeom = new THREE.SphereGeometry(0.1, 8, 8);
+                }
                 const attMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
                 const attMesh = new THREE.Mesh(attGeom, attMat);
                 attMesh.position.set(
@@ -197,7 +206,16 @@ class Game {
             }
             if (data.attachedData) {
               data.attachedData.forEach(attachment => {
-                const attGeom = new THREE.SphereGeometry(0.1, 8, 8);
+                let attGeom;
+                if (attachment.geometryType === 'SphereGeometry') {
+                  attGeom = new THREE.SphereGeometry(0.1, 8, 8);
+                } else if (attachment.geometryType === 'BoxGeometry') {
+                  attGeom = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+                } else if (attachment.geometryType === 'CylinderGeometry') {
+                  attGeom = new THREE.CylinderGeometry(0.1, 0.1, 0.2, 8);
+                } else {
+                  attGeom = new THREE.SphereGeometry(0.1, 8, 8);
+                }
                 const attMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
                 const attMesh = new THREE.Mesh(attGeom, attMat);
                 attMesh.position.set(
@@ -645,6 +663,7 @@ class Game {
           radius: this.player.radius,
           attachedData: this.player.attachedMeshes.map(att => ({
             direction: { x: att.direction.x, y: att.direction.y, z: att.direction.z },
+            geometryType: att.mesh.geometry.type,
             itemName: att.mesh.userData.itemName || ""
           })),
           isDemo: this.gameState === "TITLE"
