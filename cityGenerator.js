@@ -2,20 +2,18 @@ export class CityGenerator {
   constructor(scene, world) {
     this.scene = scene;
     this.world = world;
-    this.chunkSize = 150; 
+    this.chunkSize = 100;
     this.loadedChunks = new Set();
     this.objects = new Map();
-    this.minObjectSize = 0.2;   
-    this.maxObjectSize = 15;    
-    this.renderDistance = 1;  // Keep chunk distance small
-    this.objectRenderDistance = 30; // 30 meter object render distance
+    this.minObjectSize = 0.2;   // Minimum size for collectibles
+    this.maxObjectSize = 15;    // Maximum size for buildings
   }
 
   update(playerPosition) {
-    // Update chunk loading
     const currentChunk = this.getChunkCoords(playerPosition);
     const nearbyChunks = this.getNearbyChunks(currentChunk);
     
+    // Generate new chunks
     nearbyChunks.forEach(chunk => {
       const key = `${chunk.x},${chunk.z}`;
       if (!this.loadedChunks.has(key)) {
@@ -32,33 +30,10 @@ export class CityGenerator {
         Math.pow(z - currentChunk.z, 2)
       );
       
-      if (distance > this.renderDistance) {
+      if (distance > 2) {
         this.removeChunk({ x, z });
         this.loadedChunks.delete(key);
       }
-    });
-
-    // Update object visibility based on distance
-    this.objects.forEach((objects, chunkKey) => {
-      objects.forEach(obj => {
-        const distanceToPlayer = Math.sqrt(
-          Math.pow(obj.mesh.position.x - playerPosition.x, 2) +
-          Math.pow(obj.mesh.position.z - playerPosition.z, 2)
-        );
-
-        // Show/hide objects based on distance
-        if (distanceToPlayer <= this.objectRenderDistance) {
-          if (!obj.mesh.visible) {
-            obj.mesh.visible = true;
-            obj.body.collisionResponse = true;
-          }
-        } else {
-          if (obj.mesh.visible) {
-            obj.mesh.visible = false;
-            obj.body.collisionResponse = false; // Disable collision for far objects
-          }
-        }
-      });
     });
   }
 
@@ -71,8 +46,8 @@ export class CityGenerator {
 
   getNearbyChunks(chunk) {
     const nearby = [];
-    for (let dx = -this.renderDistance; dx <= this.renderDistance; dx++) {
-      for (let dz = -this.renderDistance; dz <= this.renderDistance; dz++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
         nearby.push({
           x: chunk.x + dx,
           z: chunk.z + dz
@@ -86,24 +61,28 @@ export class CityGenerator {
     const objects = [];
     const occupiedSpaces = new Set();
     
+    // Function to check if a position is too close to existing objects
     const isSpaceOccupied = (x, z, size) => {
-      const gridSize = Math.ceil(size * 1.2); 
+      // Check in a grid around the object based on its size
+      const gridSize = Math.ceil(size);
       for (let dx = -gridSize; dx <= gridSize; dx++) {
         for (let dz = -gridSize; dz <= gridSize; dz++) {
-          const key = `${Math.floor(x + dx)},${Math.floor(z + dz)}`;
+          const key = `${Math.round((x + dx)/2)},${Math.round((z + dz)/2)}`;
           if (occupiedSpaces.has(key)) return true;
         }
       }
       
+      // If space is free, mark it as occupied
       for (let dx = -gridSize; dx <= gridSize; dx++) {
         for (let dz = -gridSize; dz <= gridSize; dz++) {
-          const key = `${Math.floor(x + dx)},${Math.floor(z + dz)}`;
+          const key = `${Math.round((x + dx)/2)},${Math.round((z + dz)/2)}`;
           occupiedSpaces.add(key);
         }
       }
       return false;
     };
 
+    // Function to get valid spawn position
     const getValidPosition = (size) => {
       let attempts = 0;
       let x, z;
@@ -116,16 +95,34 @@ export class CityGenerator {
       return attempts < 50 ? { x, z } : null;
     };
 
-    for (let i = 0; i < 30; i++) {  
+    // Generate tiny collectibles (leaves, papers, etc)
+    for (let i = 0; i < 50; i++) {  
       const size = this.minObjectSize + Math.random() * 0.3;
       const pos = getValidPosition(size);
       if (!pos) continue;
       
-      const geometry = new THREE.SphereGeometry(size, 8, 8);
-      const material = new THREE.MeshPhongMaterial({ 
-        color: this.getRandomColor(),
-      });
-      const mesh = new THREE.Mesh(geometry, material);
+      let mesh;
+      if (Math.random() < 0.5) {
+        // Paper-like object
+        const geometry = new THREE.PlaneGeometry(size * 2, size * 2);
+        const material = new THREE.MeshPhongMaterial({ 
+          color: 0xFFFFFF,
+          side: THREE.DoubleSide,
+          flatShading: true
+        });
+        mesh = new THREE.Mesh(geometry, material);
+        mesh.rotation.x = Math.random() * Math.PI;
+        mesh.rotation.y = Math.random() * Math.PI;
+      } else {
+        // Crumpled paper ball or small debris
+        const geometry = new THREE.IcosahedronGeometry(size, 1);
+        const material = new THREE.MeshPhongMaterial({ 
+          color: this.getRandomColor(),
+          flatShading: true,
+          shininess: 0
+        });
+        mesh = new THREE.Mesh(geometry, material);
+      }
       mesh.position.set(pos.x, size, pos.z);
       this.scene.add(mesh);
 
@@ -140,14 +137,59 @@ export class CityGenerator {
       objects.push({ mesh, body });
     }
 
-    for (let i = 0; i < 15; i++) {  
+    // Generate medium collectibles (trash bins, boxes, etc)
+    for (let i = 0; i < 25; i++) {  
       const size = 0.5 + Math.random() * 2;
       const pos = getValidPosition(size);
       if (!pos) continue;
       
-      const geometry = new THREE.BoxGeometry(size, size, size);
-      const material = new THREE.MeshPhongMaterial({ color: this.getRandomColor() });
-      const mesh = new THREE.Mesh(geometry, material);
+      let mesh;
+      if (Math.random() < 0.5) {
+        // Trash bin
+        const group = new THREE.Group();
+        
+        // Main body
+        const bodyGeometry = new THREE.CylinderGeometry(size/2, size/2 * 0.8, size, 8);
+        const bodyMaterial = new THREE.MeshPhongMaterial({ 
+          color: this.getRandomColor(),
+          flatShading: true
+        });
+        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        group.add(body);
+        
+        // Rim
+        const rimGeometry = new THREE.TorusGeometry(size/2 * 1.1, size/10, 8, 8);
+        const rim = new THREE.Mesh(rimGeometry, bodyMaterial);
+        rim.position.y = size/2;
+        group.add(rim);
+        
+        mesh = group;
+      } else {
+        // Detailed box
+        const group = new THREE.Group();
+        
+        // Main box
+        const boxGeometry = new THREE.BoxGeometry(size, size, size);
+        const boxMaterial = new THREE.MeshPhongMaterial({ 
+          color: this.getRandomColor(),
+          flatShading: true
+        });
+        const box = new THREE.Mesh(boxGeometry, boxMaterial);
+        group.add(box);
+        
+        // Edge details
+        const edgeGeometry = new THREE.BoxGeometry(size * 1.1, size/10, size * 1.1);
+        const edgeMaterial = new THREE.MeshPhongMaterial({ 
+          color: 0x333333,
+          flatShading: true
+        });
+        const topEdge = new THREE.Mesh(edgeGeometry, edgeMaterial);
+        topEdge.position.y = size/2;
+        group.add(topEdge);
+        
+        mesh = group;
+      }
+      
       mesh.position.set(pos.x, size/2, pos.z);
       this.scene.add(mesh);
 
@@ -162,19 +204,64 @@ export class CityGenerator {
       objects.push({ mesh, body });
     }
 
-    for (let i = 0; i < 5; i++) {
+    // Generate large objects (cars, small structures)
+    for (let i = 0; i < 10; i++) {
       const size = 2 + Math.random() * 3;
       const pos = getValidPosition(size * 2);
       if (!pos) continue;
       
-      const geometry = new THREE.BoxGeometry(size * 2, size, size * 1.5);
-      const material = new THREE.MeshPhongMaterial({ 
-        color: this.getRandomColor(),
-        flatShading: true
-      });
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(pos.x, size/2, pos.z);
-      this.scene.add(mesh);
+      const group = new THREE.Group();
+      
+      if (Math.random() < 0.5) {
+        // Car
+        // Main body
+        const bodyGeometry = new THREE.BoxGeometry(size * 2, size * 0.8, size * 1.5);
+        const bodyMaterial = new THREE.MeshPhongMaterial({ 
+          color: this.getRandomColor(),
+          flatShading: true
+        });
+        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        group.add(body);
+        
+        // Top/cabin
+        const cabinGeometry = new THREE.BoxGeometry(size * 1.2, size * 0.6, size);
+        const cabin = new THREE.Mesh(cabinGeometry, bodyMaterial);
+        cabin.position.y = size * 0.7;
+        cabin.position.z = -size * 0.2;
+        group.add(cabin);
+        
+        // Wheels
+        const wheelGeometry = new THREE.CylinderGeometry(size * 0.3, size * 0.3, size * 0.2, 8);
+        const wheelMaterial = new THREE.MeshPhongMaterial({ color: 0x333333 });
+        for (let w = 0; w < 4; w++) {
+          const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+          wheel.rotation.z = Math.PI/2;
+          wheel.position.x = (w < 2 ? 1 : -1) * size * 0.8;
+          wheel.position.z = (w % 2 ? 1 : -1) * size * 0.5;
+          wheel.position.y = -size * 0.3;
+          group.add(wheel);
+        }
+      } else {
+        // Structure
+        const levels = 2 + Math.floor(Math.random() * 3);
+        for (let l = 0; l < levels; l++) {
+          const levelGeometry = new THREE.BoxGeometry(
+            size * (1 - l * 0.2),
+            size,
+            size * (1 - l * 0.2)
+          );
+          const levelMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0x808080,
+            flatShading: true
+          });
+          const level = new THREE.Mesh(levelGeometry, levelMaterial);
+          level.position.y = l * size;
+          group.add(level);
+        }
+      }
+      
+      group.position.set(pos.x, size/2, pos.z);
+      this.scene.add(group);
 
       const shape = new CANNON.Box(new CANNON.Vec3(size, size/2, size * 0.75));
       const body = new CANNON.Body({
@@ -184,70 +271,68 @@ export class CityGenerator {
       });
       this.world.addBody(body);
 
-      objects.push({ mesh, body });
+      objects.push({ mesh: group, body });
     }
     
-    for (let i = 0; i < 8; i++) {  
+    // Generate buildings
+    for (let i = 0; i < 12; i++) {  
       const width = 3 + Math.random() * 5;   
       const height = 6 + Math.random() * 14;
-      const depth = width; 
+      const size = Math.max(width, height);
       
       const pos = getValidPosition(width);
       if (!pos) continue;
       
-      const buildingGroup = new THREE.Group();
+      const group = new THREE.Group();
       
-      const buildingGeometry = new THREE.BoxGeometry(width, height, depth);
+      // Main building structure
+      const buildingGeometry = new THREE.BoxGeometry(width, height, width);
       const buildingMaterial = new THREE.MeshPhongMaterial({ 
-        color: this.getRandomBuildingColor(),
+        color: 0x808080,
         flatShading: true
       });
-      const buildingMesh = new THREE.Mesh(buildingGeometry, buildingMaterial);
+      const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
+      group.add(building);
       
-      const windowRows = Math.floor(height / 2) - 1;
-      const windowCols = Math.floor(width / 1.5);
+      // Add windows
+      const windowMaterial = new THREE.MeshPhongMaterial({ 
+        color: 0x88CCFF,
+        flatShading: true
+      });
       const windowSize = 0.3;
-      const windowSpacing = {
-        vertical: (height - 2) / (windowRows + 1),
-        horizontal: (width - 2) / (windowCols + 1)
-      };
-
-      for (let row = 0; row < windowRows; row++) {
-        for (let col = 0; col < windowCols; col++) {
-          const windowGeometry = new THREE.BoxGeometry(windowSize, windowSize, 0.1);
-          const windowMaterial = new THREE.MeshPhongMaterial({
-            color: 0xffffcc,
-            emissive: 0x666666
-          });
-          
-          const xPos = -width/2 + windowSpacing.horizontal * (col + 1);
-          const yPos = -height/2 + windowSpacing.vertical * (row + 1) + 1;
-          
-          const frontWindow = new THREE.Mesh(windowGeometry, windowMaterial);
-          frontWindow.position.set(xPos, yPos, depth/2 + 0.1);
-          buildingGroup.add(frontWindow);
-          
-          const backWindow = new THREE.Mesh(windowGeometry, windowMaterial);
-          backWindow.position.set(xPos, yPos, -depth/2 - 0.1);
-          buildingGroup.add(backWindow);
-          
-          const sideWindow1 = new THREE.Mesh(windowGeometry, windowMaterial);
-          sideWindow1.rotation.y = Math.PI/2;
-          sideWindow1.position.set(width/2 + 0.1, yPos, xPos);
-          buildingGroup.add(sideWindow1);
-          
-          const sideWindow2 = new THREE.Mesh(windowGeometry, windowMaterial);
-          sideWindow2.rotation.y = Math.PI/2;
-          sideWindow2.position.set(-width/2 - 0.1, yPos, xPos);
-          buildingGroup.add(sideWindow2);
+      const windowSpacing = 1;
+      for (let y = 1; y < height - 1; y += windowSpacing) {
+        for (let x = -width/2 + 1; x < width/2; x += windowSpacing) {
+          for (let z = -width/2 + 1; z < width/2; z += windowSpacing) {
+            if (Math.random() < 0.7) {
+              const windowGeometry = new THREE.BoxGeometry(windowSize, windowSize, 0.1);
+              const windowPane = new THREE.Mesh(windowGeometry, windowMaterial);
+              windowPane.position.set(x, y, width/2 + 0.1);
+              group.add(windowPane.clone());
+              windowPane.position.set(x, y, -width/2 - 0.1);
+              group.add(windowPane.clone());
+              windowPane.rotation.y = Math.PI/2;
+              windowPane.position.set(width/2 + 0.1, y, z);
+              group.add(windowPane.clone());
+              windowPane.position.set(-width/2 - 0.1, y, z);
+              group.add(windowPane.clone());
+            }
+          }
         }
       }
+      
+      // Add roof details
+      const roofDetail = new THREE.Mesh(
+        new THREE.BoxGeometry(width * 0.7, height * 0.1, width * 0.7),
+        buildingMaterial
+      );
+      roofDetail.position.y = height/2 + height * 0.05;
+      group.add(roofDetail);
+      
+      group.position.set(pos.x, height/2, pos.z);
+      this.scene.add(group);
 
-      buildingGroup.add(buildingMesh);
-      buildingGroup.position.set(pos.x, height/2, pos.z);
-      this.scene.add(buildingGroup);
-
-      const shape = new CANNON.Box(new CANNON.Vec3(width/2, height/2, depth/2));
+      const shape = new CANNON.Box(new CANNON.Vec3(width/2, height/2, width/2));
       const body = new CANNON.Body({
         mass: width * height * 2,
         shape: shape,
@@ -255,7 +340,7 @@ export class CityGenerator {
       });
       this.world.addBody(body);
 
-      objects.push({ mesh: buildingGroup, body });
+      objects.push({ mesh: group, body });
     }
 
     this.objects.set(`${chunk.x},${chunk.z}`, objects);
@@ -275,26 +360,14 @@ export class CityGenerator {
 
   getRandomColor() {
     const colors = [
-      0xFF0000, 
-      0x00FF00, 
-      0x0000FF, 
-      0xFFFF00, 
-      0xFF00FF, 
-      0x00FFFF, 
-      0xFFA500, 
-      0x800080  
-    ];
-    return colors[Math.floor(Math.random() * colors.length)];
-  }
-
-  getRandomBuildingColor() {
-    const colors = [
-      0x808080, 
-      0x606060, 
-      0xa0a0a0, 
-      0x8b4513, 
-      0x4a4a4a, 
-      0xd3d3d3  
+      0xFF0000, // red
+      0x00FF00, // green
+      0x0000FF, // blue
+      0xFFFF00, // yellow
+      0xFF00FF, // magenta
+      0x00FFFF, // cyan
+      0xFFA500, // orange
+      0x800080  // purple
     ];
     return colors[Math.floor(Math.random() * colors.length)];
   }

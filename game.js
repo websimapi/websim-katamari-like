@@ -50,67 +50,36 @@ class Game {
 
   setupScene() {
     this.scene = new THREE.Scene();
-    
-    // Enhanced sky gradient
-    const verticalGradient = {
-      topColor: new THREE.Color(0x1a4b77),    // Deeper blue at top
-      bottomColor: new THREE.Color(0x87ceeb)   // Lighter blue at horizon
-    };
-    
-    const skyMaterial = new THREE.ShaderMaterial({
-      uniforms: {
-        topColor: { value: verticalGradient.topColor },
-        bottomColor: { value: verticalGradient.bottomColor }
-      },
-      vertexShader: `
-        varying vec3 vWorldPosition;
-        void main() {
-          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-          vWorldPosition = worldPosition.xyz;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform vec3 topColor;
-        uniform vec3 bottomColor;
-        varying vec3 vWorldPosition;
-        void main() {
-          float h = normalize(vWorldPosition).y;
-          float gradient = max(pow(max(h, 0.0), 0.4), 0.0);
-          gl_FragColor = vec4(mix(bottomColor, topColor, gradient), 1.0);
-        }
-      `,
-      side: THREE.BackSide
-    });
+    this.scene.background = new THREE.Color(0x87ceeb);
 
-    const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
-    const skyDome = new THREE.Mesh(skyGeometry, skyMaterial);
-    this.scene.add(skyDome);
-
-    // Setup renderer
     this.renderer = new THREE.WebGLRenderer({
       canvas: document.getElementById('gameCanvas'),
       antialias: true
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); 
-    this.renderer.powerPreference = "high-performance";
-    this.renderer.physicallyCorrectLights = false;
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.setPixelRatio(window.devicePixelRatio);
+
+    // Add post-processing for bloom effect
+    this.composer = new THREE.EffectComposer(this.renderer);
+    this.renderPass = new THREE.RenderPass(this.scene, this.camera);
+    this.composer.addPass(this.renderPass);
+
+    this.bloomPass = new THREE.UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      1.5, // strength
+      0.4, // radius
+      0.85 // threshold
+    );
+    this.composer.addPass(this.bloomPass);
   }
 
   setupPhysics() {
     this.world = new CANNON.World();
-    this.world.gravity.set(0, -9.81, 0);
+    this.world.gravity.set(0, -20, 0); 
     this.world.broadphase = new CANNON.NaiveBroadphase();
-    this.world.solver.iterations = 7; 
+    this.world.solver.iterations = 10;
     this.world.defaultContactMaterial.friction = 0.5;
     this.world.defaultContactMaterial.restitution = 0.3;
-
-    // Add performance optimizations
-    this.world.broadphase = new CANNON.SAPBroadphase(this.world);
-    this.world.allowSleep = true;
   }
 
   setupLights() {
@@ -315,26 +284,62 @@ class Game {
     this.camera.lookAt(playerPos);
   }
 
-  start() {
-    let lastTime = performance.now();
-    const fixedTimeStep = 1.0 / 60.0; 
-    const maxSubSteps = 3; 
+  updateGlowingObjects() {
+    const playerRadius = this.player.radius;
+    const playerPosition = this.player.body.position;
+    const glowRange = 10; // Reduced to 10 meters
 
+    this.cityGenerator.objects.forEach((objects) => {
+      objects.forEach((obj) => {
+        const objectSize = obj.body.shapes[0].radius ||
+          Math.max(
+            obj.body.shapes[0].halfExtents.x,
+            obj.body.shapes[0].halfExtents.y,
+            obj.body.shapes[0].halfExtents.z
+          );
+
+        const distance = new THREE.Vector3(
+          obj.body.position.x,
+          obj.body.position.y,
+          obj.body.position.z
+        ).distanceTo(
+          new THREE.Vector3(
+            playerPosition.x,
+            playerPosition.y,
+            playerPosition.z
+          )
+        );
+
+        // Only glow if object is both smaller than player and within range
+        if (objectSize < playerRadius && distance < glowRange) {
+          if (!obj.mesh.userData.isGlowing) {
+            obj.mesh.userData.isGlowing = true;
+            obj.mesh.userData.originalMaterial = obj.mesh.material;
+            obj.mesh.material = new THREE.MeshPhongMaterial({
+              color: obj.mesh.userData.originalMaterial.color,
+              emissive: obj.mesh.userData.originalMaterial.color,
+              emissiveIntensity: 0.5
+            });
+          }
+        } else if (obj.mesh.userData.isGlowing) {
+          obj.mesh.userData.isGlowing = false;
+          obj.mesh.material = obj.mesh.userData.originalMaterial;
+        }
+      });
+    });
+  }
+
+  start() {
     const animate = () => {
       requestAnimationFrame(animate);
-      
-      const time = performance.now();
-      const deltaTime = (time - lastTime) / 1000;
-      lastTime = time;
 
-      // Update physics with fixed timestep
-      this.world.step(fixedTimeStep, deltaTime, maxSubSteps);
-      
+      this.world.step(1 / 60);
       this.player.update();
       this.updateCamera();
       this.cityGenerator.update(this.player.body.position);
+      this.updateGlowingObjects();
 
-      this.renderer.render(this.scene, this.camera);
+      this.composer.render();
     };
 
     animate();
