@@ -86,7 +86,10 @@ class Game {
     // Initialize Multiplayer Lobby
     // Create a WebsimSocket room connection (assumed to be available globally)
     this.room = new WebsimSocket();
-    this.peerPlayers = {};  // To keep track of other players in the lobby
+    // Dictionary for remote players' 3D representations
+    this.peerPlayers = {};  
+    // New: Dictionary for remote players' physics bodies for proper collision simulation.
+    this.peerBodies = {};
     this.lastSentPosition = 0;
     this.setupMultiplayer();
 
@@ -109,10 +112,12 @@ class Game {
     this.room.onmessage = (event) => {
       const data = event.data;
       switch (data.type) {
+        // When receiving ball updates, we create/update a remote physics body
         case "ball-update":
           // Ignore our own ball updates
           if (data.clientId === this.room.party.client.id) return;
-          // If we haven't seen this peer yet, create a detailed ball representation
+          
+          // If we haven't seen this peer yet, create a detailed ball representation along with a physics body.
           if (!this.peerPlayers[data.clientId]) {
             const group = new THREE.Group();
             // Create main ball mesh reflecting radius
@@ -138,24 +143,58 @@ class Game {
             }
             this.scene.add(group);
             this.peerPlayers[data.clientId] = group;
+            
+            // Create a Cannon physics body for this remote player so that collisions work.
+            const mass = data.radius * 2; // Simplified mass estimation.
+            const shape = new CANNON.Sphere(data.radius);
+            const body = new CANNON.Body({
+              mass: mass,
+              shape: shape,
+              position: new CANNON.Vec3(data.position.x, data.position.y, data.position.z)
+            });
+            // Initialize with received quaternion.
+            body.quaternion.set(data.quaternion.x, data.quaternion.y, data.quaternion.z, data.quaternion.w);
+            this.world.addBody(body);
+            this.peerBodies[data.clientId] = body;
           } else {
-            // Update existing peer ball
+            // Update existing peer ball (both 3D group and physics body)
             const group = this.peerPlayers[data.clientId];
-            group.position.set(data.position.x, data.position.y, data.position.z);
-            group.quaternion.set(data.quaternion.x, data.quaternion.y, data.quaternion.z, data.quaternion.w);
-            const mainBallMesh = group.userData.mainBallMesh;
-            if (mainBallMesh.geometry.parameters.radius !== data.radius) {
+            const body = this.peerBodies[data.clientId];
+            const targetPos = new CANNON.Vec3(data.position.x, data.position.y, data.position.z);
+            // Compute velocity update based on difference (assuming network updates roughly every 100ms)
+            const velocityFactor = 10; // 1/0.1 sec approximation
+            const deltaPos = targetPos.vsub(body.position);
+            body.velocity.set(
+              deltaPos.x * velocityFactor,
+              deltaPos.y * velocityFactor,
+              deltaPos.z * velocityFactor
+            );
+            // Smoothly update rotation as well.
+            body.quaternion.set(data.quaternion.x, data.quaternion.y, data.quaternion.z, data.quaternion.w);
+            
+            // If radius has changed, update collision shape and the main mesh geometry.
+            if (body.shapes[0].radius !== data.radius) {
+              // Remove old shape and add new shape with updated radius.
+              body.shapes = [];
+              const newShape = new CANNON.Sphere(data.radius);
+              body.addShape(newShape);
+              // Update mass proportionally (approximation)
+              body.mass = data.radius * 2;
+              body.updateMassProperties();
+              
+              // Update main ball mesh geometry.
+              const mainBallMesh = group.userData.mainBallMesh;
               mainBallMesh.geometry.dispose();
               mainBallMesh.geometry = new THREE.SphereGeometry(data.radius, 32, 32);
             }
-            // Remove current attachment meshes (if any)
+            
+            // Update attachments: remove existing attachments except the main ball mesh.
             while (group.children.length > 1) {
-              let child = group.children[1];
+              const child = group.children[1];
               group.remove(child);
               if (child.geometry) child.geometry.dispose();
               if (child.material) child.material.dispose();
             }
-            // Add attachments from the update
             if (data.attachedData) {
               data.attachedData.forEach(attachment => {
                 const attGeom = new THREE.SphereGeometry(0.1, 8, 8);
@@ -172,10 +211,14 @@ class Game {
           }
           break;
         case "disconnected":
-          // Remove disconnected player's mesh if it exists
+          // Remove disconnected player's mesh and physics body if they exist.
           if (this.peerPlayers[data.clientId]) {
             this.scene.remove(this.peerPlayers[data.clientId]);
             delete this.peerPlayers[data.clientId];
+          }
+          if (this.peerBodies[data.clientId]) {
+            this.world.removeBody(this.peerBodies[data.clientId]);
+            delete this.peerBodies[data.clientId];
           }
           break;
         case "object-picked-up":
@@ -482,11 +525,15 @@ class Game {
 
   // Absorb a remote player peer by updating the local player's radius, mass, and geometry.
   absorbPeer(clientId, peerRadius) {
-    // Remove peer's mesh from scene and from peerPlayers
+    // Remove peer's mesh from scene and from peerPlayers and physics world.
     const peerGroup = this.peerPlayers[clientId];
     if (peerGroup) {
       this.scene.remove(peerGroup);
       delete this.peerPlayers[clientId];
+    }
+    if (this.peerBodies[clientId]) {
+      this.world.removeBody(this.peerBodies[clientId]);
+      delete this.peerBodies[clientId];
     }
     // Compute volumes for both balls
     const localVolume = (4 / 3) * Math.PI * Math.pow(this.player.radius, 3);
@@ -551,7 +598,7 @@ class Game {
       const delta = this.clock.getDelta();
       this.world.step(this.fixedTimeStep, delta, this.maxSubSteps);
       
-      // Demo mode: if on the title screen, auto apply a random force to the ball
+      // In demo mode, automatically apply a random force to the ball.
       if (this.gameState === "TITLE") {
         this.demoTimer += delta;
         if (this.demoTimer >= 2) {
@@ -602,6 +649,16 @@ class Game {
           }))
         });
         this.lastSentPosition = performance.now();
+      }
+
+      // Update remote peer 3D groups from their physics bodies for collision accuracy.
+      for (const clientId in this.peerBodies) {
+        const body = this.peerBodies[clientId];
+        const group = this.peerPlayers[clientId];
+        if (group && body) {
+          group.position.copy(body.position);
+          group.quaternion.copy(body.quaternion);
+        }
       }
 
       // Update the minimap with local player and peer positions
