@@ -108,28 +108,71 @@ class Game {
   }
 
   setupMultiplayer() {
-    // Handle incoming messages for peer position updates and disconnections
+    // Handle incoming messages for peer ball updates and disconnections
     this.room.onmessage = (event) => {
       const data = event.data;
       switch (data.type) {
-        case "position-update":
-          // Ignore our own position updates
+        case "ball-update":
+          // Ignore our own ball updates
           if (data.clientId === this.room.party.client.id) return;
-          // If we haven't seen this peer yet, create a simple representation
+          // If we haven't seen this peer yet, create a detailed ball representation
           if (!this.peerPlayers[data.clientId]) {
-            const geometry = new THREE.SphereGeometry(1, 16, 16);
-            const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-            const peerMesh = new THREE.Mesh(geometry, material);
-            peerMesh.castShadow = true;
-            this.scene.add(peerMesh);
-            this.peerPlayers[data.clientId] = peerMesh;
+            const group = new THREE.Group();
+            // Create main ball mesh reflecting radius
+            const geometry = new THREE.SphereGeometry(data.radius, 32, 32);
+            const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
+            const ballMesh = new THREE.Mesh(geometry, material);
+            ballMesh.castShadow = true;
+            group.add(ballMesh);
+            group.userData.mainBallMesh = ballMesh;
+            // Add attachments as simple spheres
+            if (data.attachedData) {
+              data.attachedData.forEach(attachment => {
+                const attGeom = new THREE.SphereGeometry(0.1, 8, 8);
+                const attMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                const attMesh = new THREE.Mesh(attGeom, attMat);
+                attMesh.position.set(
+                  attachment.direction.x * data.radius,
+                  attachment.direction.y * data.radius,
+                  attachment.direction.z * data.radius
+                );
+                group.add(attMesh);
+              });
+            }
+            this.scene.add(group);
+            this.peerPlayers[data.clientId] = group;
+          } else {
+            // Update existing peer ball
+            const group = this.peerPlayers[data.clientId];
+            group.position.set(data.position.x, data.position.y, data.position.z);
+            group.quaternion.set(data.quaternion.x, data.quaternion.y, data.quaternion.z, data.quaternion.w);
+            const mainBallMesh = group.userData.mainBallMesh;
+            if (mainBallMesh.geometry.parameters.radius !== data.radius) {
+              mainBallMesh.geometry.dispose();
+              mainBallMesh.geometry = new THREE.SphereGeometry(data.radius, 32, 32);
+            }
+            // Remove current attachment meshes (if any)
+            while (group.children.length > 1) {
+              let child = group.children[1];
+              group.remove(child);
+              if (child.geometry) child.geometry.dispose();
+              if (child.material) child.material.dispose();
+            }
+            // Add attachments from the update
+            if (data.attachedData) {
+              data.attachedData.forEach(attachment => {
+                const attGeom = new THREE.SphereGeometry(0.1, 8, 8);
+                const attMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                const attMesh = new THREE.Mesh(attGeom, attMat);
+                attMesh.position.set(
+                  attachment.direction.x * data.radius,
+                  attachment.direction.y * data.radius,
+                  attachment.direction.z * data.radius
+                );
+                group.add(attMesh);
+              });
+            }
           }
-          // Update the peer's position
-          this.peerPlayers[data.clientId].position.set(
-            data.position.x,
-            data.position.y,
-            data.position.z
-          );
           break;
         case "disconnected":
           // Remove disconnected player's mesh if it exists
@@ -444,15 +487,26 @@ class Game {
         });
       });
 
-      // Send our current player position to other peers (throttled every 100ms)
+      // Send our current ball state (position, orientation, size, attachments) to other peers (throttled every 100ms)
       if (this.gameState === "PLAY" && performance.now() - this.lastSentPosition > 100) {
         this.room.send({
-          type: "position-update",
+          type: "ball-update",
           position: { 
             x: this.player.mesh.position.x, 
             y: this.player.mesh.position.y, 
             z: this.player.mesh.position.z 
-          }
+          },
+          quaternion: { 
+            x: this.player.mesh.quaternion.x, 
+            y: this.player.mesh.quaternion.y, 
+            z: this.player.mesh.quaternion.z, 
+            w: this.player.mesh.quaternion.w 
+          },
+          radius: this.player.radius,
+          attachedData: this.player.attachedMeshes.map(att => ({
+            direction: { x: att.direction.x, y: att.direction.y, z: att.direction.z },
+            itemName: att.mesh.userData.itemName || ""
+          }))
         });
         this.lastSentPosition = performance.now();
       }
