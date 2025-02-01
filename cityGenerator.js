@@ -92,47 +92,86 @@ export class CityGenerator {
       return attempts < 50 ? { x, z } : null;
     };
 
+    // Updated object counts for more variety
     const objectCounts = {
-      tiny: 25,  // Star Dust count
-      medium: 15,
-      large: 5,
-      buildings: 6,
-      unique: 15  // Increased unique object count
+      tiny: 25,        // Star Dust count
+      grass: 100,      // Grass patches
+      flowers: 50,     // Flowers
+      small: 30,       // Small collectibles
+      medium: 15,      // Medium objects
+      large: 5,        // Large objects
+      unique: 25       // Unique objects
     };
 
-    const geometryPool = {
-      sphere: new THREE.IcosahedronGeometry(1, 0),
-      box: new THREE.BoxGeometry(1, 1, 1),
-      cylinder: new THREE.CylinderGeometry(1, 1, 1, 6)
-    };
+    // Generate grass patches (non-collectible decoration)
+    for (let i = 0; i < objectCounts.grass; i++) {
+      const pos = getValidPosition(0.5);
+      if (!pos) continue;
 
-    const materialPool = new Map();
-    const getMaterial = (color) => {
-      if (!materialPool.has(color)) {
-        materialPool.set(color, new THREE.MeshPhongMaterial({ 
-          color, 
+      const grassGroup = new THREE.Group();
+      const bladesCount = 3 + Math.floor(Math.random() * 4);
+      
+      for (let j = 0; j < bladesCount; j++) {
+        const height = 0.3 + Math.random() * 0.4;
+        const width = 0.05 + Math.random() * 0.05;
+        const bladeGeo = new THREE.BoxGeometry(width, height, width);
+        const bladeMat = new THREE.MeshPhongMaterial({ 
+          color: 0x50C878,
           flatShading: true 
-        }));
+        });
+        const blade = new THREE.Mesh(bladeGeo, bladeMat);
+        blade.position.x = (Math.random() - 0.5) * 0.3;
+        blade.position.z = (Math.random() - 0.5) * 0.3;
+        blade.position.y = height / 2;
+        blade.rotation.y = Math.random() * Math.PI;
+        blade.rotation.x = (Math.random() - 0.5) * 0.2;
+        grassGroup.add(blade);
       }
-      return materialPool.get(color);
-    };
+      
+      grassGroup.position.set(pos.x, 0, pos.z);
+      this.scene.add(grassGroup);
+    }
 
-    const createWindows = (width, height) => {
-      const windowGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.1);
-      const windowMaterial = getMaterial(0x88CCFF);
-      const windowGroup = new THREE.Group();
-      const spacing = 2;
-      for (let y = 1; y < height - 1; y += spacing) {
-        for (let x = -width/2 + 1; x < width/2; x += spacing) {
-          if (Math.random() < 0.5) {
-            const windowPane = new THREE.Mesh(windowGeometry, windowMaterial);
-            windowPane.position.set(x, y, width/2 + 0.1);
-            windowGroup.add(windowPane);
-          }
-        }
+    // Generate flowers (collectible)
+    for (let i = 0; i < objectCounts.flowers; i++) {
+      const pos = getValidPosition(0.5);
+      if (!pos) continue;
+
+      const flowerGroup = new THREE.Group();
+      
+      // Stem
+      const stemGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.3, 8);
+      const stemMat = new THREE.MeshPhongMaterial({ color: 0x228B22 });
+      const stem = new THREE.Mesh(stemGeo, stemMat);
+      stem.position.y = 0.15;
+      flowerGroup.add(stem);
+
+      // Petals
+      const petalCount = 5 + Math.floor(Math.random() * 4);
+      const flowerColor = this.getFlowerColor();
+      for (let j = 0; j < petalCount; j++) {
+        const petalGeo = new THREE.BoxGeometry(0.1, 0.02, 0.1);
+        const petalMat = new THREE.MeshPhongMaterial({ color: flowerColor });
+        const petal = new THREE.Mesh(petalGeo, petalMat);
+        petal.position.y = 0.3;
+        petal.rotation.y = (j / petalCount) * Math.PI * 2;
+        flowerGroup.add(petal);
       }
-      return windowGroup;
-    };
+
+      flowerGroup.position.set(pos.x, 0, pos.z);
+      flowerGroup.userData.itemName = "Flower";
+      this.scene.add(flowerGroup);
+
+      const shape = new CANNON.Box(new CANNON.Vec3(0.1, 0.15, 0.1));
+      const body = new CANNON.Body({
+        mass: 0.5,
+        shape: shape,
+        position: new CANNON.Vec3(pos.x, 0.15, pos.z)
+      });
+      this.world.addBody(body);
+
+      objects.push({ mesh: flowerGroup, body });
+    }
 
     // Generate Star Dust in the sky (tiny objects)
     for (let i = 0; i < objectCounts.tiny; i++) {  
@@ -141,9 +180,8 @@ export class CityGenerator {
       if (!pos) continue;
       
       const starAltitude = 20 + Math.random() * 10;
-      const geometry = geometryPool.sphere.clone();
-      geometry.scale(size, size, size);
-      const material = getMaterial(0xFFFFFF);
+      const geometry = new THREE.SphereGeometry(size, 8, 8);
+      const material = new THREE.MeshPhongMaterial({ color: 0xFFFFFF, flatShading: true });
       const mesh = new THREE.Mesh(geometry, material);
       mesh.userData.itemName = "Star Dust";
       mesh.userData.isStarDust = true; // Flag for glow effect
@@ -163,7 +201,63 @@ export class CityGenerator {
       objects.push({ mesh, body });
     }
 
-    // Generate medium collectibles
+    // Generate small collectibles
+    for (let i = 0; i < objectCounts.small; i++) {
+      const size = 0.3 + Math.random() * 0.4;
+      const pos = getValidPosition(size);
+      if (!pos) continue;
+
+      const smallObjectTypes = [
+        "Marble", "Coin", "Button", "Gem", "Shell",
+        "Leaf", "Acorn", "Pebble", "Bead", "Dice"
+      ];
+      
+      const type = smallObjectTypes[Math.floor(Math.random() * smallObjectTypes.length)];
+      const smallObject = this.createSmallObject(type, pos, size);
+      if (smallObject) {
+        objects.push(smallObject);
+      }
+    }
+
+    // Add trash bins (using simple geometry instead of GLB)
+    for (let i = 0; i < 5; i++) {
+      const size = 1;
+      const pos = getValidPosition(size);
+      if (!pos) continue;
+
+      const binGroup = new THREE.Group();
+      
+      // Bin body
+      const bodyGeo = new THREE.CylinderGeometry(size/2, size/2, size, 8);
+      const bodyMat = new THREE.MeshPhongMaterial({ 
+        color: this.getRandomColor(),
+        flatShading: true 
+      });
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      binGroup.add(body);
+
+      // Bin rim
+      const rimGeo = new THREE.CylinderGeometry(size/2 * 1.1, size/2 * 1.1, size/10, 8);
+      const rim = new THREE.Mesh(rimGeo, bodyMat);
+      rim.position.y = size/2;
+      binGroup.add(rim);
+
+      binGroup.position.set(pos.x, size/2, pos.z);
+      binGroup.userData.itemName = "Trash Bin";
+      this.scene.add(binGroup);
+
+      const shape = new CANNON.Cylinder(size/2, size/2, size, 8);
+      const physBody = new CANNON.Body({
+        mass: 5,
+        shape: shape,
+        position: new CANNON.Vec3(pos.x, size/2, pos.z)
+      });
+      this.world.addBody(physBody);
+
+      objects.push({ mesh: binGroup, body: physBody });
+    }
+
+    // Generate medium objects
     for (let i = 0; i < objectCounts.medium; i++) {  
       const size = 0.5 + Math.random() * 2;
       const pos = getValidPosition(size);
@@ -172,13 +266,15 @@ export class CityGenerator {
       let mesh;
       if (Math.random() < 0.5) {
         const group = new THREE.Group();
-        const bodyGeometry = geometryPool.cylinder.clone();
+        const bodyGeometry = new THREE.CylinderGeometry(size/2, size, size/2, 6);
         bodyGeometry.scale(size/2, size, size/2);
-        const bodyMaterial = getMaterial(this.getRandomColor());
+        const bodyMaterial = new THREE.MeshPhongMaterial({ 
+          color: this.getRandomColor(), 
+          flatShading: true 
+        });
         const bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
         group.add(bodyMesh);
-        const rimGeometry = geometryPool.cylinder.clone();
-        rimGeometry.scale(size/2 * 1.1, size/10, size/2 * 1.1);
+        const rimGeometry = new THREE.CylinderGeometry(size/2 * 1.1, size/2 * 1.1, size/10, 6);
         const rim = new THREE.Mesh(rimGeometry, bodyMaterial);
         rim.position.y = size/2;
         group.add(rim);
@@ -186,14 +282,19 @@ export class CityGenerator {
         mesh.userData.itemName = "Trash Bin";
       } else {
         const group = new THREE.Group();
-        const boxGeometry = geometryPool.box.clone();
+        const boxGeometry = new THREE.BoxGeometry(size, size, size);
         boxGeometry.scale(size, size, size);
-        const boxMaterial = getMaterial(this.getRandomColor());
+        const boxMaterial = new THREE.MeshPhongMaterial({ 
+          color: this.getRandomColor(), 
+          flatShading: true 
+        });
         const boxMesh = new THREE.Mesh(boxGeometry, boxMaterial);
         group.add(boxMesh);
-        const edgeGeometry = geometryPool.box.clone();
-        edgeGeometry.scale(size * 1.1, size/10, size * 1.1);
-        const edgeMaterial = getMaterial(0x333333);
+        const edgeGeometry = new THREE.BoxGeometry(size * 1.1, size/10, size * 1.1);
+        const edgeMaterial = new THREE.MeshPhongMaterial({ 
+          color: 0x333333, 
+          flatShading: true 
+        });
         const topEdge = new THREE.Mesh(edgeGeometry, edgeMaterial);
         topEdge.position.y = size/2;
         group.add(topEdge);
@@ -224,20 +325,23 @@ export class CityGenerator {
       const group = new THREE.Group();
       
       if (Math.random() < 0.5) {
-        const bodyGeometry = geometryPool.box.clone();
-        bodyGeometry.scale(size * 2, size * 0.8, size * 1.5);
-        const bodyMaterial = getMaterial(this.getRandomColor());
+        const bodyGeometry = new THREE.BoxGeometry(size * 2, size * 0.8, size * 1.5);
+        const bodyMaterial = new THREE.MeshPhongMaterial({ 
+          color: this.getRandomColor(), 
+          flatShading: true 
+        });
         const bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
         group.add(bodyMesh);
-        const cabinGeometry = geometryPool.box.clone();
-        cabinGeometry.scale(size * 1.2, size * 0.6, size);
+        const cabinGeometry = new THREE.BoxGeometry(size * 1.2, size * 0.6, size);
         const cabin = new THREE.Mesh(cabinGeometry, bodyMaterial);
         cabin.position.y = size * 0.7;
         cabin.position.z = -size * 0.2;
         group.add(cabin);
-        const wheelGeometry = geometryPool.cylinder.clone();
-        wheelGeometry.scale(size * 0.3, size * 0.2, size * 0.3);
-        const wheelMaterial = getMaterial(0x333333);
+        const wheelGeometry = new THREE.CylinderGeometry(size * 0.3, size * 0.3, size * 0.2, 6);
+        const wheelMaterial = new THREE.MeshPhongMaterial({ 
+          color: 0x333333, 
+          flatShading: true 
+        });
         for (let w = 0; w < 4; w++) {
           const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
           wheel.rotation.z = Math.PI/2;
@@ -250,9 +354,11 @@ export class CityGenerator {
       } else {
         const levels = 2 + Math.floor(Math.random() * 3);
         for (let l = 0; l < levels; l++) {
-          const levelGeometry = geometryPool.box.clone();
-          levelGeometry.scale(size * (1 - l * 0.2), size, size * (1 - l * 0.2));
-          const levelMaterial = getMaterial(0x808080);
+          const levelGeometry = new THREE.BoxGeometry(size * (1 - l * 0.2), size, size * (1 - l * 0.2));
+          const levelMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0x808080, 
+            flatShading: true 
+          });
           const level = new THREE.Mesh(levelGeometry, levelMaterial);
           level.position.y = l * size;
           group.add(level);
@@ -281,48 +387,6 @@ export class CityGenerator {
       "Guitar", "Top Hat", "Ice Cream Cone", "Coffee Cup",
       "Umbrella", "Rainbow", "Pencil", "Clock", "Crown"
     ];
-
-    // Load trash bin model
-    const loader = new THREE.GLTFLoader();
-    loader.load('trash_bin.glb', (gltf) => {
-      for (let i = 0; i < 5; i++) {
-        const pos = getValidPosition(2); // Increased from 1 to 2 for larger space
-        if (!pos) continue;
-        
-        const trashBin = gltf.scene.clone();
-        trashBin.scale.set(2, 2, 2); // Increased from 0.5 to 2
-        trashBin.position.set(pos.x, 2, pos.z); // Adjusted height
-        trashBin.userData.itemName = "Trash Bin";
-        this.scene.add(trashBin);
-
-        const shape = new CANNON.Box(new CANNON.Vec3(2, 3, 2)); // Increased physics box size
-        const body = new CANNON.Body({
-          mass: 20, // Increased mass
-          shape: shape,
-          position: new CANNON.Vec3(pos.x, 3, pos.z)
-        });
-        this.world.addBody(body);
-
-        objects.push({ mesh: trashBin, body });
-      }
-    });
-
-    // Add new small ground objects
-    const smallObjects = [
-      "Paperclip", "Flower", "Grass", "Ladybug", "Butterfly",
-      "Dandelion", "Leaf", "Pebble", "Acorn", "Mushroom"
-    ];
-
-    for (let i = 0; i < 30; i++) { // Add more small objects
-      const size = 0.3 + Math.random() * 0.4; // Keep them small
-      const pos = getValidPosition(size);
-      if (!pos) continue;
-      const type = smallObjects[Math.floor(Math.random() * smallObjects.length)];
-      const smallObject = this.createSmallObject(type, pos, size);
-      if (smallObject) {
-        objects.push(smallObject);
-      }
-    }
 
     for (let i = 0; i < objectCounts.unique; i++) {
       const size = 1 + Math.random();
@@ -555,122 +619,6 @@ export class CityGenerator {
     return { mesh: group, body: body };
   }
 
-  createSmallObject(type, pos, size) {
-    const group = new THREE.Group();
-    let width = size, height = size, depth = size;
-
-    if (type === "Paperclip") {
-      const curve = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(0, 0, 0),
-        new THREE.Vector3(0, size, 0),
-        new THREE.Vector3(size * 0.5, size, 0),
-        new THREE.Vector3(size * 0.5, 0, 0)
-      ]);
-      const geometry = new THREE.TubeGeometry(curve, 8, size * 0.1, 8, false);
-      const material = new THREE.MeshPhongMaterial({ color: 0xC0C0C0, metalness: 0.8 });
-      const mesh = new THREE.Mesh(geometry, material);
-      group.add(mesh);
-    } else if (type === "Flower") {
-      const stemGeo = new THREE.CylinderGeometry(size * 0.05, size * 0.05, size, 8);
-      const stemMat = new THREE.MeshPhongMaterial({ color: 0x228B22 });
-      const stem = new THREE.Mesh(stemGeo, stemMat);
-      group.add(stem);
-      
-      for (let i = 0; i < 5; i++) {
-        const petalGeo = new THREE.SphereGeometry(size * 0.2, 8, 8);
-        const petalMat = new THREE.MeshPhongMaterial({ color: 0xFF69B4 });
-        const petal = new THREE.Mesh(petalGeo, petalMat);
-        const angle = (i / 5) * Math.PI * 2;
-        petal.position.set(
-          Math.cos(angle) * size * 0.3,
-          size * 0.5,
-          Math.sin(angle) * size * 0.3
-        );
-        group.add(petal);
-      }
-    } else if (type === "Grass") {
-      for (let i = 0; i < 5; i++) {
-        const bladeGeo = new THREE.ConeGeometry(size * 0.1, size, 4);
-        const bladeMat = new THREE.MeshPhongMaterial({ color: 0x32CD32 });
-        const blade = new THREE.Mesh(bladeGeo, bladeMat);
-        blade.position.set(
-          (Math.random() - 0.5) * size * 0.5,
-          size * 0.5,
-          (Math.random() - 0.5) * size * 0.5
-        );
-        blade.rotation.y = Math.random() * Math.PI;
-        blade.rotation.x = Math.random() * 0.2;
-        group.add(blade);
-      }
-    } else if (type === "Ladybug") {
-      const bodyGeo = new THREE.SphereGeometry(size * 0.3, 8, 8);
-      const bodyMat = new THREE.MeshPhongMaterial({ color: 0xFF0000 });
-      const body = new THREE.Mesh(bodyGeo, bodyMat);
-      group.add(body);
-      
-      for (let i = 0; i < 6; i++) {
-        const spotGeo = new THREE.SphereGeometry(size * 0.08, 8, 8);
-        const spotMat = new THREE.MeshPhongMaterial({ color: 0x000000 });
-        const spot = new THREE.Mesh(spotGeo, spotMat);
-        spot.position.set(
-          (Math.random() - 0.5) * size * 0.3,
-          size * 0.2,
-          (Math.random() - 0.5) * size * 0.3
-        );
-        group.add(spot);
-      }
-    } else if (type === "Butterfly") {
-      const bodyGeo = new THREE.CylinderGeometry(size * 0.05, size * 0.05, size * 0.5, 8);
-      const bodyMat = new THREE.MeshPhongMaterial({ color: 0x000000 });
-      const body = new THREE.Mesh(bodyGeo, bodyMat);
-      group.add(body);
-      
-      for (let i = 0; i < 2; i++) {
-        const wingGeo = new THREE.CircleGeometry(size * 0.4, 8);
-        const wingMat = new THREE.MeshPhongMaterial({ 
-          color: 0x4169E1,
-          side: THREE.DoubleSide
-        });
-        const wing = new THREE.Mesh(wingGeo, wingMat);
-        wing.position.set((i === 0 ? 1 : -1) * size * 0.4, 0, 0);
-        wing.rotation.y = Math.PI / 2;
-        group.add(wing);
-      }
-    } else if (type === "Dandelion") {
-      const stemGeo = new THREE.CylinderGeometry(size * 0.05, size * 0.05, size, 8);
-      const stemMat = new THREE.MeshPhongMaterial({ color: 0x90EE90 });
-      const stem = new THREE.Mesh(stemGeo, stemMat);
-      group.add(stem);
-      
-      for (let i = 0; i < 20; i++) {
-        const seedGeo = new THREE.SphereGeometry(size * 0.05, 8, 8);
-        const seedMat = new THREE.MeshPhongMaterial({ color: 0xFFFFFF });
-        const seed = new THREE.Mesh(seedGeo, seedMat);
-        const phi = Math.random() * Math.PI * 2;
-        const theta = Math.random() * Math.PI;
-        seed.position.set(
-          Math.sin(theta) * Math.cos(phi) * size * 0.3,
-          size * 0.5 + Math.sin(theta) * Math.sin(phi) * size * 0.3,
-          Math.cos(theta) * size * 0.3
-        );
-        group.add(seed);
-      }
-    }
-
-    group.position.set(pos.x, height / 2, pos.z);
-    group.userData.itemName = type;
-
-    const shape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
-    const body = new CANNON.Body({
-      mass: size * 2,
-      shape: shape,
-      position: new CANNON.Vec3(pos.x, height / 2, pos.z)
-    });
-    this.world.addBody(body);
-
-    return { mesh: group, body: body };
-  }
-
   getRandomColor() {
     const colors = [
       0xFF0000, // red
@@ -683,5 +631,97 @@ export class CityGenerator {
       0x800080  // purple
     ];
     return colors[Math.floor(Math.random() * colors.length)];
+  }
+
+  createSmallObject(type, pos, size) {
+    const group = new THREE.Group();
+    let shape, mesh;
+
+    switch(type) {
+      case "Marble":
+        mesh = new THREE.Mesh(
+          new THREE.SphereGeometry(size/2, 16, 16),
+          new THREE.MeshPhongMaterial({ 
+            color: this.getGlassColor(),
+            flatShading: true,
+            transparent: true,
+            opacity: 0.8
+          })
+        );
+        shape = new CANNON.Sphere(size/2);
+        break;
+
+      case "Coin":
+        mesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(size/2, size/2, size/10, 32),
+          new THREE.MeshPhongMaterial({ color: 0xFFD700 })
+        );
+        mesh.rotation.x = Math.PI/2;
+        shape = new CANNON.Cylinder(size/2, size/2, size/10, 32);
+        break;
+
+      case "Button":
+        const buttonGroup = new THREE.Group();
+        const base = new THREE.Mesh(
+          new THREE.CylinderGeometry(size/2, size/2, size/5, 16),
+          new THREE.MeshPhongMaterial({ color: this.getRandomColor() })
+        );
+        const holes = new THREE.Mesh(
+          new THREE.CylinderGeometry(size/6, size/6, size/5, 4),
+          new THREE.MeshPhongMaterial({ color: 0x333333 })
+        );
+        buttonGroup.add(base, holes);
+        mesh = buttonGroup;
+        shape = new CANNON.Cylinder(size/2, size/2, size/5, 16);
+        break;
+
+      default:
+        mesh = new THREE.Mesh(
+          new THREE.SphereGeometry(size/2, 8, 8),
+          new THREE.MeshPhongMaterial({ 
+            color: this.getRandomColor(),
+            flatShading: true 
+          })
+        );
+        shape = new CANNON.Sphere(size/2);
+    }
+
+    group.add(mesh);
+    group.position.set(pos.x, size/2, pos.z);
+    group.userData.itemName = type;
+    this.scene.add(group);
+
+    const body = new CANNON.Body({
+      mass: size * 2,
+      shape: shape,
+      position: new CANNON.Vec3(pos.x, size/2, pos.z)
+    });
+    this.world.addBody(body);
+
+    return { mesh: group, body };
+  }
+
+  getFlowerColor() {
+    const flowerColors = [
+      0xFF69B4, // pink
+      0xFF0000, // red
+      0xFFFF00, // yellow
+      0x800080, // purple
+      0xFFA500, // orange
+      0xFFFFFF, // white
+      0x0000FF  // blue
+    ];
+    return flowerColors[Math.floor(Math.random() * flowerColors.length)];
+  }
+
+  getGlassColor() {
+    const glassColors = [
+      0x87CEEB, // sky blue
+      0x98FB98, // pale green
+      0xDDA0DD, // plum
+      0x40E0D0, // turquoise
+      0xFFB6C1  // light pink
+    ];
+    return glassColors[Math.floor(Math.random() * glassColors.length)];
   }
 }
