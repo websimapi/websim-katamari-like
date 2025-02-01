@@ -1,9 +1,9 @@
 import { CityGenerator } from './cityGenerator.js';
 import { PlayerBall } from './playerBall.js';
+import { PickupPreview } from './pickupPreview.js';
 
 class Game {
   constructor() {
-    // Create camera first
     this.camera = new THREE.PerspectiveCamera(
       75,
       window.innerWidth / window.innerHeight,
@@ -33,7 +33,6 @@ class Game {
     this.audio.loop = true;
     this.audioPlayed = false;
 
-    // Play audio on first tap of screen
     window.addEventListener(
       'pointerdown',
       () => {
@@ -45,26 +44,24 @@ class Game {
       { once: true }
     );
 
-    // Add FPS limiter
     this.clock = new THREE.Clock();
     this.fixedTimeStep = 1.0 / 60.0;
     this.maxSubSteps = 3;
 
-    // Optimize renderer
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.shadowMap.enabled = false; // Disable shadows for performance
+    this.renderer.shadowMap.enabled = false;
     
-    // Reduce bloom quality for better performance
     this.bloomPass.strength = 1.5;
     this.bloomPass.radius = 0.5;
     this.bloomPass.threshold = 0.85;
     
-    // Cache frequently used objects
     this._playerPos = new THREE.Vector3();
     this._temp = new THREE.Vector3();
     
-    // Listen to window resize events to update renderer and composer
     window.addEventListener('resize', this.onWindowResize.bind(this));
+
+    // Initialize the pickup preview UI
+    this.pickupPreview = new PickupPreview();
 
     this.start();
   }
@@ -80,16 +77,15 @@ class Game {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(window.devicePixelRatio);
 
-    // Add post-processing for bloom effect
     this.composer = new THREE.EffectComposer(this.renderer);
     this.renderPass = new THREE.RenderPass(this.scene, this.camera);
     this.composer.addPass(this.renderPass);
 
     this.bloomPass = new THREE.UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      1.5, // strength
-      0.5, // radius
-      0.85 // threshold
+      1.5,
+      0.5,
+      0.85
     );
     this.composer.addPass(this.bloomPass);
   }
@@ -155,18 +151,15 @@ class Game {
         y: -data.vector.y * maxForce
       };
 
-      // Record the current directionY and timestamp
       const currentTime = performance.now();
       const directionY = data.vector.y;
 
-      if (Math.abs(directionY) > 0.5) { // Threshold to filter small movements
+      if (Math.abs(directionY) > 0.5) {
         this.joystickMovements.push({ time: currentTime, directionY: directionY });
       }
 
-      // Remove old joystick movements (older than 500 ms)
       this.joystickMovements = this.joystickMovements.filter(m => currentTime - m.time < 500);
 
-      // Check for rapid opposite direction movements
       let signChanges = 0;
       for (let i = 1; i < this.joystickMovements.length; i++) {
         if ((this.joystickMovements[i].directionY > 0 && this.joystickMovements[i - 1].directionY <= 0) ||
@@ -178,13 +171,12 @@ class Game {
       let boost = false;
       if (signChanges >= 3) {
         boost = true;
-        // Clear movements to prevent immediate re-trigger
         this.joystickMovements = [];
       }
 
       this.player.applyForce(force);
       if (boost) {
-        this.player.triggerBoost(3000); // Boost lasts 3 seconds with 5x acceleration effect applied in the player logic
+        this.player.triggerBoost(3000);
       }
     });
 
@@ -208,7 +200,7 @@ class Game {
 
   updateKeyboardControls() {
     const force = { x: 0, y: 0 };
-    const speed = 10; // Increased base speed by 2x
+    const speed = 10;
     let isMoving = false;
 
     if (this.keys['ArrowUp'] || this.keys['w']) {
@@ -231,14 +223,12 @@ class Game {
     const currentTime = performance.now();
     const directionY = force.y;
 
-    if (isMoving && Math.abs(directionY) > 0.5) { // Threshold to filter small movements
+    if (isMoving && Math.abs(directionY) > 0.5) {
       this.keyboardMovements.push({ time: currentTime, directionY: directionY });
     }
 
-    // Remove old keyboard movements (older than 500 ms)
     this.keyboardMovements = this.keyboardMovements.filter(m => currentTime - m.time < 500);
 
-    // Check for rapid opposite direction movements
     let signChanges = 0;
     for (let i = 1; i < this.keyboardMovements.length; i++) {
       if ((this.keyboardMovements[i].directionY > 0 && this.keyboardMovements[i - 1].directionY <= 0) ||
@@ -250,14 +240,13 @@ class Game {
     let boost = false;
     if (signChanges >= 3) {
       boost = true;
-      // Clear movements to prevent immediate re-trigger
       this.keyboardMovements = [];
     }
 
     if (isMoving) {
       this.player.applyForce(force);
       if (boost) {
-        this.player.triggerBoost(3000); // Boost lasts 3 seconds with 5x acceleration effect applied
+        this.player.triggerBoost(3000);
       }
     } else {
       this.player.setBoosting(false);
@@ -284,6 +273,11 @@ class Game {
           );
 
         if (objectSize < this.player.radius) {
+          // Create a preview clone and update the pickup UI before absorbing the object
+          const previewClone = object.mesh.clone();
+          const itemName = object.mesh.userData.itemName || "Collectible";
+          this.pickupPreview.update(previewClone, itemName);
+
           this.player.absorbObject(object);
 
           for (let [key, objects] of this.cityGenerator.objects.entries()) {
@@ -321,16 +315,13 @@ class Game {
 
     this.cityGenerator.objects.forEach((objects) => {
       objects.forEach((obj) => {
-        if (!obj.mesh) return; // Skip if object was removed
-
+        if (!obj.mesh) return;
         const objectSize = obj.body.shapes[0].radius ||
           Math.max(
             obj.body.shapes[0].halfExtents.x,
             obj.body.shapes[0].halfExtents.y,
             obj.body.shapes[0].halfExtents.z
           );
-
-        // Use cached vector for distance calculation
         this._temp.set(
           obj.body.position.x,
           obj.body.position.y,
@@ -348,7 +339,6 @@ class Game {
                 emissive: obj.mesh.material.color,
                 emissiveIntensity: 0.5
               });
-              // Cache original material for later restoration
               obj.mesh.userData.originalMaterial = obj.mesh.material;
             }
             obj.mesh.material = obj.mesh.userData.emissiveMaterial;
@@ -366,14 +356,11 @@ class Game {
       requestAnimationFrame(animate);
 
       const delta = this.clock.getDelta();
-      
-      // Limit physics updates
       this.world.step(this.fixedTimeStep, delta, this.maxSubSteps);
       
       this.player.update();
       this.updateCamera();
       
-      // Only update city and glow effects every other frame
       if (this.frame % 2 === 0) {
         this.cityGenerator.update(this.player.body.position);
         this.updateGlowingObjects();

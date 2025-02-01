@@ -63,7 +63,6 @@ export class CityGenerator {
     
     // Function to check if a position is too close to existing objects
     const isSpaceOccupied = (x, z, size) => {
-      // Check in a grid around the object based on its size
       const gridSize = Math.ceil(size);
       for (let dx = -gridSize; dx <= gridSize; dx++) {
         for (let dz = -gridSize; dz <= gridSize; dz++) {
@@ -72,7 +71,6 @@ export class CityGenerator {
         }
       }
       
-      // If space is free, mark it as occupied
       for (let dx = -gridSize; dx <= gridSize; dx++) {
         for (let dz = -gridSize; dz <= gridSize; dz++) {
           const key = `${Math.round((x + dx)/2)},${Math.round((z + dz)/2)}`;
@@ -82,7 +80,6 @@ export class CityGenerator {
       return false;
     };
 
-    // Function to get valid spawn position
     const getValidPosition = (size) => {
       let attempts = 0;
       let x, z;
@@ -95,19 +92,17 @@ export class CityGenerator {
       return attempts < 50 ? { x, z } : null;
     };
 
-    // Reduce number of objects per chunk
     const objectCounts = {
-      tiny: 25,    // Reduced from 50
-      medium: 15,  // Reduced from 25
-      large: 5,    // Reduced from 10
-      buildings: 6 // Reduced from 12
+      tiny: 25,
+      medium: 15,
+      large: 5,
+      buildings: 6
     };
 
-    // Create geometry and material pools to reuse
     const geometryPool = {
-      sphere: new THREE.IcosahedronGeometry(1, 0), // Reduced geometry complexity
+      sphere: new THREE.IcosahedronGeometry(1, 0),
       box: new THREE.BoxGeometry(1, 1, 1),
-      cylinder: new THREE.CylinderGeometry(1, 1, 1, 6) // Reduced segments
+      cylinder: new THREE.CylinderGeometry(1, 1, 1, 6)
     };
 
     const materialPool = new Map();
@@ -121,13 +116,10 @@ export class CityGenerator {
       return materialPool.get(color);
     };
 
-    // Optimize window generation
     const createWindows = (width, height) => {
       const windowGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.1);
       const windowMaterial = getMaterial(0x88CCFF);
       const windowGroup = new THREE.Group();
-
-      // Reduce window density
       const spacing = 2;
       for (let y = 1; y < height - 1; y += spacing) {
         for (let x = -width/2 + 1; x < width/2; x += spacing) {
@@ -141,7 +133,7 @@ export class CityGenerator {
       return windowGroup;
     };
 
-    // Generate tiny collectibles (leaves, papers, etc)
+    // Generate tiny collectibles
     for (let i = 0; i < objectCounts.tiny; i++) {  
       const size = this.minObjectSize + Math.random() * 0.3;
       const pos = getValidPosition(size);
@@ -149,19 +141,19 @@ export class CityGenerator {
       
       let mesh;
       if (Math.random() < 0.5) {
-        // Paper-like object
         const geometry = geometryPool.box.clone();
         geometry.scale(size * 2, size * 2, size * 2);
         const material = getMaterial(0xFFFFFF);
         mesh = new THREE.Mesh(geometry, material);
         mesh.rotation.x = Math.random() * Math.PI;
         mesh.rotation.y = Math.random() * Math.PI;
+        mesh.userData.itemName = "Paper";
       } else {
-        // Crumpled paper ball or small debris
         const geometry = geometryPool.sphere.clone();
         geometry.scale(size, size, size);
         const material = getMaterial(this.getRandomColor());
         mesh = new THREE.Mesh(geometry, material);
+        mesh.userData.itemName = "Crumpled Paper Ball";
       }
       mesh.position.set(pos.x, size, pos.z);
       this.scene.add(mesh);
@@ -177,7 +169,7 @@ export class CityGenerator {
       objects.push({ mesh, body });
     }
 
-    // Generate medium collectibles (trash bins, boxes, etc)
+    // Generate medium collectibles
     for (let i = 0; i < objectCounts.medium; i++) {  
       const size = 0.5 + Math.random() * 2;
       const pos = getValidPosition(size);
@@ -185,44 +177,34 @@ export class CityGenerator {
       
       let mesh;
       if (Math.random() < 0.5) {
-        // Trash bin
         const group = new THREE.Group();
-        
-        // Main body
         const bodyGeometry = geometryPool.cylinder.clone();
         bodyGeometry.scale(size/2, size, size/2);
         const bodyMaterial = getMaterial(this.getRandomColor());
-        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-        group.add(body);
-        
-        // Rim
+        const bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        group.add(bodyMesh);
         const rimGeometry = geometryPool.cylinder.clone();
         rimGeometry.scale(size/2 * 1.1, size/10, size/2 * 1.1);
         const rim = new THREE.Mesh(rimGeometry, bodyMaterial);
         rim.position.y = size/2;
         group.add(rim);
-        
         mesh = group;
+        mesh.userData.itemName = "Trash Bin";
       } else {
-        // Detailed box
         const group = new THREE.Group();
-        
-        // Main box
         const boxGeometry = geometryPool.box.clone();
         boxGeometry.scale(size, size, size);
         const boxMaterial = getMaterial(this.getRandomColor());
-        const box = new THREE.Mesh(boxGeometry, boxMaterial);
-        group.add(box);
-        
-        // Edge details
+        const boxMesh = new THREE.Mesh(boxGeometry, boxMaterial);
+        group.add(boxMesh);
         const edgeGeometry = geometryPool.box.clone();
         edgeGeometry.scale(size * 1.1, size/10, size * 1.1);
         const edgeMaterial = getMaterial(0x333333);
         const topEdge = new THREE.Mesh(edgeGeometry, edgeMaterial);
         topEdge.position.y = size/2;
         group.add(topEdge);
-        
         mesh = group;
+        mesh.userData.itemName = "Box";
       }
       
       mesh.position.set(pos.x, size/2, pos.z);
@@ -239,7 +221,7 @@ export class CityGenerator {
       objects.push({ mesh, body });
     }
 
-    // Generate large objects (cars, small structures)
+    // Generate large objects
     for (let i = 0; i < objectCounts.large; i++) {
       const size = 2 + Math.random() * 3;
       const pos = getValidPosition(size * 2);
@@ -248,23 +230,17 @@ export class CityGenerator {
       const group = new THREE.Group();
       
       if (Math.random() < 0.5) {
-        // Car
-        // Main body
         const bodyGeometry = geometryPool.box.clone();
         bodyGeometry.scale(size * 2, size * 0.8, size * 1.5);
         const bodyMaterial = getMaterial(this.getRandomColor());
-        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-        group.add(body);
-        
-        // Top/cabin
+        const bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        group.add(bodyMesh);
         const cabinGeometry = geometryPool.box.clone();
         cabinGeometry.scale(size * 1.2, size * 0.6, size);
         const cabin = new THREE.Mesh(cabinGeometry, bodyMaterial);
         cabin.position.y = size * 0.7;
         cabin.position.z = -size * 0.2;
         group.add(cabin);
-        
-        // Wheels
         const wheelGeometry = geometryPool.cylinder.clone();
         wheelGeometry.scale(size * 0.3, size * 0.2, size * 0.3);
         const wheelMaterial = getMaterial(0x333333);
@@ -276,8 +252,8 @@ export class CityGenerator {
           wheel.position.y = -size * 0.3;
           group.add(wheel);
         }
+        group.userData.itemName = "Car";
       } else {
-        // Structure
         const levels = 2 + Math.floor(Math.random() * 3);
         for (let l = 0; l < levels; l++) {
           const levelGeometry = geometryPool.box.clone();
@@ -287,6 +263,7 @@ export class CityGenerator {
           level.position.y = l * size;
           group.add(level);
         }
+        group.userData.itemName = "Structure";
       }
       
       group.position.set(pos.x, size/2, pos.z);
@@ -314,18 +291,15 @@ export class CityGenerator {
       
       const group = new THREE.Group();
       
-      // Main building structure
       const buildingGeometry = geometryPool.box.clone();
       buildingGeometry.scale(width, height, width);
       const buildingMaterial = getMaterial(0x808080);
       const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
       group.add(building);
       
-      // Add windows
       const windows = createWindows(width, height);
       group.add(windows);
       
-      // Add roof details
       const roofDetail = new THREE.Mesh(
         geometryPool.box.clone(),
         buildingMaterial
@@ -335,6 +309,7 @@ export class CityGenerator {
       group.add(roofDetail);
       
       group.position.set(pos.x, height/2, pos.z);
+      group.userData.itemName = "Building";
       this.scene.add(group);
 
       const shape = new CANNON.Box(new CANNON.Vec3(width/2, height/2, width/2));
@@ -356,7 +331,6 @@ export class CityGenerator {
     const objects = this.objects.get(key);
     if (objects) {
       objects.forEach(obj => {
-        // Properly dispose of geometries and materials
         if (obj.mesh.geometry) obj.mesh.geometry.dispose();
         if (obj.mesh.material) {
           if (Array.isArray(obj.mesh.material)) {
