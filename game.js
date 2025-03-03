@@ -22,6 +22,11 @@ class Game {
     this.setupPhysics();
     this.setupLights();
 
+    // Optimization: Detect device memory and set optimal pixel ratio automatically
+    const deviceMemory = navigator.deviceMemory || 4;
+    const optimalPixelRatio = deviceMemory <= 2 ? 1 : Math.min(window.devicePixelRatio, 2);
+    this.renderer.setPixelRatio(optimalPixelRatio);
+
     // Create the city and player
     // Spawn player near origin so that all players are close together
     this.cityGenerator = new CityGenerator(this.scene, this.world);
@@ -57,12 +62,6 @@ class Game {
       },
       { once: true }
     );
-
-    // Optimization: detect device memory and set optimal pixel ratio
-    const deviceMemory = navigator.deviceMemory || 4;
-    const optimalPixelRatio = deviceMemory <= 2 ? 1 : Math.min(window.devicePixelRatio, 2);
-    this.deviceMemory = deviceMemory;
-    this.renderer.setPixelRatio(optimalPixelRatio);
 
     // Shadows disabled for performance
     this.renderer.shadowMap.enabled = false;
@@ -112,34 +111,28 @@ class Game {
     this.room.onmessage = (event) => {
       const data = event.data;
       switch (data.type) {
-        // When receiving ball updates, we create/update a remote physics body
         case "ball-update":
-          // Ignore our own ball updates
           if (data.clientId === this.room.party.client.id) return;
-          
-          // If we haven't seen this peer yet, create a detailed ball representation along with a physics body.
           if (!this.peerPlayers[data.clientId]) {
+            // Create a new group for the peer player including a halo ring for better visualization
             const group = new THREE.Group();
-            // Create main ball mesh reflecting radius
+            // Main ball mesh (with a matt material for performance)
             const geometry = new THREE.SphereGeometry(data.radius, 32, 32);
-            const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
+            const material = new THREE.MeshPhongMaterial({ color: 0x00ff00, flatShading: true });
             const ballMesh = new THREE.Mesh(geometry, material);
             ballMesh.castShadow = true;
             group.add(ballMesh);
             group.userData.mainBallMesh = ballMesh;
-            // Add attachments as simple spheres (will be updated below)
+            // Add halo ring indicator to denote peer player
+            const ringGeometry = new THREE.RingGeometry(data.radius * 1.05, data.radius * 1.2, 32);
+            const ringMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00, side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
+            const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+            ring.rotation.x = - Math.PI / 2;
+            group.add(ring);
+            // Add attachments if any
             if (data.attachedData) {
               data.attachedData.forEach(attachment => {
-                let attGeom;
-                if (attachment.geometryType === 'SphereGeometry') {
-                  attGeom = new THREE.SphereGeometry(0.1, 8, 8);
-                } else if (attachment.geometryType === 'BoxGeometry') {
-                  attGeom = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-                } else if (attachment.geometryType === 'CylinderGeometry') {
-                  attGeom = new THREE.CylinderGeometry(0.1, 0.1, 0.2, 8);
-                } else {
-                  attGeom = new THREE.SphereGeometry(0.1, 8, 8);
-                }
+                const attGeom = new THREE.SphereGeometry(0.1, 8, 8);
                 const attMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
                 const attMesh = new THREE.Mesh(attGeom, attMat);
                 attMesh.position.set(
@@ -153,69 +146,65 @@ class Game {
             this.scene.add(group);
             this.peerPlayers[data.clientId] = group;
             
-            // Create a Cannon physics body for this remote player so that collisions work.
-            const mass = data.radius * 2; // Simplified mass estimation.
+            // Create a Cannon physics body for smooth interpolation of remote players
+            const mass = data.radius * 2;
             const shape = new CANNON.Sphere(data.radius);
             const body = new CANNON.Body({
               mass: mass,
               shape: shape,
               position: new CANNON.Vec3(data.position.x, data.position.y, data.position.z)
             });
-            // Initialize with received quaternion.
             body.quaternion.set(data.quaternion.x, data.quaternion.y, data.quaternion.z, data.quaternion.w);
+            // Damp velocities for smoother remote player movements
+            body.linearDamping = 0.9;
+            body.angularDamping = 0.9;
             this.world.addBody(body);
             this.peerBodies[data.clientId] = body;
           } else {
-            // Update existing peer ball (both 3D group and physics body)
+            // Update existing peer player and its physics body for smoother interpolation
             const group = this.peerPlayers[data.clientId];
             const body = this.peerBodies[data.clientId];
             const targetPos = new CANNON.Vec3(data.position.x, data.position.y, data.position.z);
-            // Compute velocity update based on difference (assuming network updates roughly every 100ms)
-            const velocityFactor = 10; // 1/0.1 sec approximation
+            // Smooth position transition using linear interpolation via physics velocity update
+            const velocityFactor = 10;
             const deltaPos = targetPos.vsub(body.position);
             body.velocity.set(
               deltaPos.x * velocityFactor,
               deltaPos.y * velocityFactor,
               deltaPos.z * velocityFactor
             );
-            // Smoothly update rotation as well.
+            // Update rotation smoothly
             body.quaternion.set(data.quaternion.x, data.quaternion.y, data.quaternion.z, data.quaternion.w);
             
-            // If radius has changed, update collision shape and the main mesh geometry.
+            // Update radius changes (and therefore halo ring) if needed
             if (body.shapes[0].radius !== data.radius) {
-              // Remove old shape and add new shape with updated radius.
               body.shapes = [];
               const newShape = new CANNON.Sphere(data.radius);
               body.addShape(newShape);
-              // Update mass proportionally (approximation)
               body.mass = data.radius * 2;
               body.updateMassProperties();
               
-              // Update main ball mesh geometry.
               const mainBallMesh = group.userData.mainBallMesh;
               mainBallMesh.geometry.dispose();
               mainBallMesh.geometry = new THREE.SphereGeometry(data.radius, 32, 32);
+              // Update halo ring geometry:
+              const ring = group.children.find(child => child.geometry instanceof THREE.RingGeometry);
+              if (ring) {
+                ring.geometry.dispose();
+                ring.geometry = new THREE.RingGeometry(data.radius * 1.05, data.radius * 1.2, 32);
+              }
             }
-            
-            // Update attachments: remove existing attachments except the main ball mesh.
-            while (group.children.length > 1) {
-              const child = group.children[1];
+            // Update attachments: remove and re-add to match attachedData
+            while (group.children.length > 2) {
+              // keep main ball and halo ring (first two children)
+              const child = group.children[2];
               group.remove(child);
               if (child.geometry) child.geometry.dispose();
               if (child.material) child.material.dispose();
             }
             if (data.attachedData) {
               data.attachedData.forEach(attachment => {
-                let attGeom;
-                if (attachment.geometryType === 'SphereGeometry') {
-                  attGeom = new THREE.SphereGeometry(0.1, 8, 8);
-                } else if (attachment.geometryType === 'BoxGeometry') {
-                  attGeom = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-                } else if (attachment.geometryType === 'CylinderGeometry') {
-                  attGeom = new THREE.CylinderGeometry(0.1, 0.1, 0.2, 8);
-                } else {
-                  attGeom = new THREE.SphereGeometry(0.1, 8, 8);
-                }
+                const attGeom = new THREE.SphereGeometry(0.1, 8, 8);
                 const attMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
                 const attMesh = new THREE.Mesh(attGeom, attMat);
                 attMesh.position.set(
@@ -229,7 +218,6 @@ class Game {
           }
           break;
         case "disconnected":
-          // Remove disconnected player's mesh and physics body if they exist.
           if (this.peerPlayers[data.clientId]) {
             this.scene.remove(this.peerPlayers[data.clientId]);
             delete this.peerPlayers[data.clientId];
@@ -240,12 +228,9 @@ class Game {
           }
           break;
         case "object-picked-up":
-          // When a peer picks up an object, remove that object from our city as well.
-          // This ensures all peers see the same map data.
           this.cityGenerator.removeObjectByBodyId(data.bodyId);
           break;
         default:
-          // Handle other event types if needed
           break;
       }
     };
@@ -616,36 +601,31 @@ class Game {
       const delta = this.clock.getDelta();
       this.world.step(this.fixedTimeStep, delta, this.maxSubSteps);
       
-      // In demo mode, automatically apply a random force to the ball.
       if (this.gameState === "TITLE") {
         this.demoTimer += delta;
         if (this.demoTimer >= 2) {
-          // Choose a new random direction every 2 seconds
           this.demoDirection.set(Math.random() * 2 - 1, Math.random() * 2 - 1).normalize();
           this.demoTimer = 0;
         }
         this.player.applyForce({ x: this.demoDirection.x * 5, y: this.demoDirection.y * 5 });
       }
-
+      
       this.player.update();
-      // Check collisions between local player and remote players
       this.checkPlayerCollisions();
       this.updateCamera(delta);
       
-      // Update city chunks every other frame
       if (this.frame % 2 === 0) {
         this.cityGenerator.update(this.player.body.position);
       }
       
-      // Update flying creatures for all loaded chunks
       const currentTime = performance.now() / 1000;
       this.cityGenerator.objects.forEach(chunkData => {
         chunkData.flying.forEach(creature => {
           creature.update(currentTime);
         });
       });
-
-      // Send our current ball state (position, orientation, size, attachments) to other peers (throttled every 100ms)
+      
+      // Send our current ball state to peers (throttle every 100ms)
       if (performance.now() - this.lastSentPosition > 100) {
         this.room.send({
           type: "ball-update",
@@ -663,15 +643,14 @@ class Game {
           radius: this.player.radius,
           attachedData: this.player.attachedMeshes.map(att => ({
             direction: { x: att.direction.x, y: att.direction.y, z: att.direction.z },
-            geometryType: att.mesh.geometry.type,
             itemName: att.mesh.userData.itemName || ""
           })),
           isDemo: this.gameState === "TITLE"
         });
         this.lastSentPosition = performance.now();
       }
-
-      // Update remote peer 3D groups from their physics bodies for collision accuracy.
+      
+      // Update remote peer groups from their corresponding physics bodies smoothly.
       for (const clientId in this.peerBodies) {
         const body = this.peerBodies[clientId];
         const group = this.peerPlayers[clientId];
@@ -680,14 +659,11 @@ class Game {
           group.quaternion.copy(body.quaternion);
         }
       }
-
-      // Update the minimap with local player and peer positions
+      
       this.minimap.update(this.player, this.peerPlayers);
-
       this.renderer.render(this.scene, this.camera);
       this.frame++;
     };
-
     this.frame = 0;
     this.clock = new THREE.Clock();
     this.fixedTimeStep = 1.0 / 60.0;
