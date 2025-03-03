@@ -595,11 +595,20 @@ class Game {
   }
 
   start() {
+    // Ensure clock and fixedTimeStep are initialized before animation starts
+    this.clock = new THREE.Clock();
+    this.fixedTimeStep = 1.0 / 60.0;
+    this.maxSubSteps = 3;
+    this.frame = 0;
+    
     const animate = () => {
-      requestAnimationFrame(animate);
-
-      const delta = this.clock.getDelta();
-      this.world.step(this.fixedTimeStep, delta, this.maxSubSteps);
+      // Get delta time safely; if for any reason clock is undefined, default delta to 0
+      const delta = (this.clock && typeof this.clock.getDelta === 'function') ? this.clock.getDelta() : 0;
+      
+      // Step the physics world only if defined and delta is valid
+      if(this.world && delta >= 0) {
+        this.world.step(this.fixedTimeStep, delta, this.maxSubSteps);
+      }
       
       if (this.gameState === "TITLE") {
         this.demoTimer += delta;
@@ -625,7 +634,7 @@ class Game {
         });
       });
       
-      // Send our current ball state to peers (throttle every 100ms)
+      // Throttle sending our ball state to peers every 100ms
       if (performance.now() - this.lastSentPosition > 100) {
         this.room.send({
           type: "ball-update",
@@ -650,7 +659,7 @@ class Game {
         this.lastSentPosition = performance.now();
       }
       
-      // Update remote peer groups from their corresponding physics bodies smoothly.
+      // Smoothly update remote peer groups from their corresponding physics bodies.
       for (const clientId in this.peerBodies) {
         const body = this.peerBodies[clientId];
         const group = this.peerPlayers[clientId];
@@ -663,11 +672,9 @@ class Game {
       this.minimap.update(this.player, this.peerPlayers);
       this.renderer.render(this.scene, this.camera);
       this.frame++;
+      requestAnimationFrame(animate);
     };
-    this.frame = 0;
-    this.clock = new THREE.Clock();
-    this.fixedTimeStep = 1.0 / 60.0;
-    this.maxSubSteps = 3;
+    
     animate();
   }
 }
