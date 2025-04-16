@@ -2,6 +2,9 @@ export class SceneManager {
   constructor() {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x87ceeb);
+    
+    // Add fog for distance fade-out and to simulate atmosphere
+    this.scene.fog = new THREE.FogExp2(0x87ceeb, 0.005);
 
     this.renderer = new THREE.WebGLRenderer({
       canvas: document.getElementById('gameCanvas'),
@@ -19,7 +22,6 @@ export class SceneManager {
     this.renderer.shadowMap.enabled = false;
     
     this.setupLights();
-    this.setupGround();
     
     this.handleResize();
   }
@@ -31,14 +33,18 @@ export class SceneManager {
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(10, 20, 10);
     this.scene.add(directionalLight);
+    
+    // Add a hemisphere light for more natural outdoor lighting
+    const hemisphereLight = new THREE.HemisphereLight(0x87ceeb, 0x444444, 0.4);
+    this.scene.add(hemisphereLight);
   }
 
-  setupGround() {
-    const groundGeometry = new THREE.PlaneGeometry(1000, 1000);
-    const groundMaterial = new THREE.MeshPhongMaterial({ color: 0x999999 });
-    const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
-    groundMesh.rotation.x = -Math.PI / 2;
-    this.scene.add(groundMesh);
+  updateFogForBiome(biomeColor) {
+    // Adjust fog color to match biome
+    const fogColor = new THREE.Color(biomeColor);
+    // Blend with sky color
+    fogColor.lerp(new THREE.Color(0x87ceeb), 0.5);
+    this.scene.fog.color.copy(fogColor);
   }
 
   handleResize() {
@@ -52,7 +58,7 @@ export class SceneManager {
   }
 
   render(camera) {
+    this.camera = camera; // Store reference for resize handler
     this.renderer.render(this.scene, camera);
   }
 }
-

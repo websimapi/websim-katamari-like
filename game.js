@@ -32,14 +32,15 @@ class Game {
     
     this.physicsManager = new PhysicsManager();
     this.world = this.physicsManager.world;
-    this.physicsManager.addGround();
-
+    
     // Create the city and player
     this.cityGenerator = new CityGenerator(this.scene, this.world);
     this.player = new PlayerBall(this.scene, this.world);
-    // Ensure initial player position is near the center
-    this.player.body.position.set(0, this.player.radius, 0);
+    // Ensure initial player position is near the center and above terrain
+    const startHeight = 5; // Start a bit above ground to account for terrain
+    this.player.body.position.set(0, startHeight + this.player.radius, 0);
     this.player.mesh.position.copy(this.player.body.position);
+    
     // Initialize additional properties for player collisions
     this.player.isStuck = false;
     this.player.stuckTo = null;
@@ -112,6 +113,9 @@ class Game {
 
         if (this.player) {
           this.player.update();
+          
+          // Update biome display for current player position
+          this.updateBiomeDisplay();
         }
         
         // Check collisions between local player and remote players
@@ -124,8 +128,8 @@ class Game {
           this.cameraController.update(this.gameState, this.player, delta);
         }
         
-        // Update city chunks every other frame for performance
-        if (this.frame % 2 === 0 && this.cityGenerator && this.player && this.player.body) {
+        // Update city chunks every frame
+        if (this.cityGenerator && this.player && this.player.body) {
           this.cityGenerator.update(this.player.body.position);
         }
         
@@ -164,6 +168,22 @@ class Game {
     };
 
     animate();
+  }
+  
+  updateBiomeDisplay() {
+    if (!this.player || !this.player.mesh || !this.cityGenerator) return;
+    
+    const pos = this.player.mesh.position;
+    const biome = this.cityGenerator.getBiomeForPosition(pos.x, pos.z);
+    
+    let biomeName = "Unknown";
+    if (biome === this.cityGenerator.biomes.CITY) biomeName = "City";
+    else if (biome === this.cityGenerator.biomes.FOREST) biomeName = "Forest";
+    else if (biome === this.cityGenerator.biomes.DESERT) biomeName = "Desert";
+    else if (biome === this.cityGenerator.biomes.MOUNTAINS) biomeName = "Mountains";
+    else if (biome === this.cityGenerator.biomes.SNOW) biomeName = "Snow";
+    
+    document.getElementById('biome-value').textContent = biomeName;
   }
 }
 
