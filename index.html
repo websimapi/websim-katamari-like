@@ -50,7 +50,25 @@
   <script src="https://cdn.jsdelivr.net/npm/cannon@0.6.2/build/cannon.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.10.1/dist/nipplejs.min.js"></script>
 
-  <!-- The WebsimSocket library is assumed to be provided in the environment -->
+  <!-- Import map for module imports -->
+  <script type="importmap">
+    {
+      "imports": {
+        "./playerBall.js": "./playerBall.js",
+        "./cityGenerator.js": "./cityGenerator.js",
+        "./pickupPreview.js": "./pickupPreview.js",
+        "./minimap.js": "./minimap.js",
+        "./flyingCreatures.js": "./flyingCreatures.js",
+        "./InputController.js": "./InputController.js",
+        "./PhysicsManager.js": "./PhysicsManager.js",
+        "./CameraController.js": "./CameraController.js",
+        "./DemoController.js": "./DemoController.js",
+        "./CollisionHandler.js": "./CollisionHandler.js",
+        "./MultiplayerManager.js": "./MultiplayerManager.js",
+        "./SceneManager.js": "./SceneManager.js"
+      }
+    }
+  </script>
 
   <!-- Load game code -->
   <script type="module" src="game.js"></script>
