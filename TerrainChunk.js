@@ -9,7 +9,8 @@ export class TerrainChunk {
     this.noiseFunction = noiseFunction;
     
     // The resolution of the terrain mesh (number of vertices per side)
-    this.resolution = 20;
+    // Increased for smoother terrain
+    this.resolution = 32;
     
     // Store the heightmap data for collision queries
     this.heightData = new Float32Array(this.resolution * this.resolution);
@@ -18,7 +19,7 @@ export class TerrainChunk {
   }
   
   createTerrain() {
-    // Create a plane geometry for the terrain
+    // Create a plane geometry for the terrain with higher resolution
     const geometry = new THREE.PlaneGeometry(
       this.chunkSize,
       this.chunkSize,
@@ -36,11 +37,11 @@ export class TerrainChunk {
     // Apply height modifications
     const vertices = geometry.attributes.position.array;
     for (let i = 0, j = 0; i < vertices.length; i += 3, j++) {
-      // Get the x and z coordinates in world space
-      const x = vertices[i] + worldX + this.chunkSize/2;
-      const z = vertices[i+2] + worldZ + this.chunkSize/2;
+      // Get the x and z coordinates in world space - use absolute world coordinates for seamless chunks
+      const x = vertices[i] + worldX;
+      const z = vertices[i+2] + worldZ;
       
-      // Generate height using noise function
+      // Generate height using noise function - CRITICAL: using absolute world coordinates for seamless terrain
       const elevation = this.getElevation(x, z);
       
       // Store in our heightmap data array
@@ -56,24 +57,20 @@ export class TerrainChunk {
     // Create material based on biome
     const material = new THREE.MeshPhongMaterial({
       color: this.biome.color,
-      flatShading: true
+      flatShading: false // Smooth shading for better terrain appearance
     });
-    
-    // Add some detail to the terrain with a second material for slopes
-    const terrainGroup = new THREE.Group();
     
     // Main terrain mesh
     this.mesh = new THREE.Mesh(geometry, material);
     this.mesh.receiveShadow = true;
-    terrainGroup.add(this.mesh);
     
-    // Add the terrain group to the scene
-    terrainGroup.position.set(
-      worldX + this.chunkSize/2,
+    // Position the mesh at the exact world position to avoid seams
+    this.mesh.position.set(
+      worldX,
       0,
-      worldZ + this.chunkSize/2
+      worldZ
     );
-    this.scene.add(terrainGroup);
+    this.scene.add(this.mesh);
     
     // Create physics for the terrain
     this.createTerrainPhysics();
@@ -94,11 +91,12 @@ export class TerrainChunk {
       shape: heightfieldShape
     });
     
-    // Position the body correctly
+    // Position the body correctly - CRITICAL for proper alignment
     const worldX = this.chunkX * this.chunkSize;
     const worldZ = this.chunkZ * this.chunkSize;
     
     // Position the heightfield - note that heightfield is centered on its local origin
+    // This alignment is crucial for seamless terrain chunks
     this.body.position.set(
       worldX + this.chunkSize/2,
       0,
@@ -128,6 +126,7 @@ export class TerrainChunk {
   
   getElevation(x, z) {
     // Get the base elevation from the noise function
+    // This function now uses absolute world coordinates
     const noiseValue = this.noiseFunction(x, z);
     
     // Apply biome-specific elevation range
@@ -143,6 +142,7 @@ export class TerrainChunk {
   
   getDetailNoise(x, z) {
     // Add smaller scale noise for terrain details
+    // Using absolute world coordinates for seamless chunks
     const scale1 = 0.1;
     const scale2 = 0.05;
     const scale3 = 0.025;
@@ -159,6 +159,35 @@ export class TerrainChunk {
     // Convert world coordinates to local chunk coordinates
     const localX = x - (this.chunkX * this.chunkSize);
     const localZ = z - (this.chunkZ * this.chunkSize);
+    
+    // Ensure coordinates are within chunk bounds
+    if (localX < 0 || localX >= this.chunkSize || localZ < 0 || localZ >= this.chunkSize) {
+      // For points outside chunk, return closest edge point
+      const clampedX = Math.max(0, Math.min(localX, this.chunkSize - 0.001));
+      const clampedZ = Math.max(0, Math.min(localZ, this.chunkSize - 0.001));
+      
+      // Convert to normalized coordinates (0-1 across the chunk)
+      const normalizedX = clampedX / this.chunkSize;
+      const normalizedZ = clampedZ / this.chunkSize;
+      
+      // Continue with sampling using clamped coordinates
+      const xIndex = Math.floor(normalizedX * (this.resolution - 1));
+      const zIndex = Math.floor(normalizedZ * (this.resolution - 1));
+      
+      // Bilinear interpolation for smooth height transitions
+      const xFrac = (normalizedX * (this.resolution - 1)) - xIndex;
+      const zFrac = (normalizedZ * (this.resolution - 1)) - zIndex;
+      
+      const h00 = this.heightData[zIndex * this.resolution + xIndex];
+      const h10 = this.heightData[zIndex * this.resolution + xIndex + 1];
+      const h01 = this.heightData[(zIndex + 1) * this.resolution + xIndex];
+      const h11 = this.heightData[(zIndex + 1) * this.resolution + xIndex + 1];
+      
+      return h00 * (1 - xFrac) * (1 - zFrac) +
+             h10 * xFrac * (1 - zFrac) +
+             h01 * (1 - xFrac) * zFrac +
+             h11 * xFrac * zFrac;
+    }
     
     // Convert to normalized coordinates (0-1 across the chunk)
     const normalizedX = localX / this.chunkSize;
