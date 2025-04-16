@@ -44,12 +44,12 @@ class Game {
     this.player.isStuck = false;
     this.player.stuckTo = null;
 
-    // Initialize subsystems
+    // Initialize multiplayer manager after player is created
     this.multiplayerManager = new MultiplayerManager(this);
     this.room = this.multiplayerManager.room;
     this.peerPlayers = this.multiplayerManager.peerPlayers;
     this.peerBodies = this.multiplayerManager.peerBodies;
-    
+
     // Initialize UI components - must happen after multiplayer, player and scene setup
     this.pickupPreview = new PickupPreview();
     this.minimap = new Minimap();
@@ -143,7 +143,7 @@ class Game {
 
         // Send player state to peers
         if (this.multiplayerManager) {
-          this.multiplayerManager.sendPlayerState(this.gameState);
+          this.multiplayerManager.sendPlayerState();
           this.multiplayerManager.updatePeers();
         }
 
