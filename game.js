@@ -29,18 +29,21 @@ class Game {
     this.sceneManager = new SceneManager();
     this.scene = this.sceneManager.scene;
     this.renderer = this.sceneManager.renderer;
-    
+
     this.physicsManager = new PhysicsManager();
     this.world = this.physicsManager.world;
-    
-    // Create the city and player
-    this.cityGenerator = new CityGenerator(this.scene, this.world);
-    this.player = new PlayerBall(this.scene, this.world);
-    // Ensure initial player position is near the center and above terrain
-    const startHeight = 5; // Start a bit above ground to account for terrain
-    this.player.body.position.set(0, startHeight + this.player.radius, 0);
+
+    // Create the city first so the terrain is generated
+    this.cityGenerator = new CityGenerator(this.scene, this.world, this.physicsManager);
+
+    // Then create player, passing physics manager for material setup
+    this.player = new PlayerBall(this.scene, this.world, this.physicsManager);
+
+    // Find a safe starting position based on actual terrain height
+    const startPos = this.findSafeStartPosition();
+    this.player.body.position.set(startPos.x, startPos.y, startPos.z);
     this.player.mesh.position.copy(this.player.body.position);
-    
+
     // Initialize additional properties for player collisions
     this.player.isStuck = false;
     this.player.stuckTo = null;
@@ -54,7 +57,7 @@ class Game {
     // Initialize UI components - must happen after multiplayer, player and scene setup
     this.pickupPreview = new PickupPreview();
     this.minimap = new Minimap();
-    
+
     // These controllers need the player, scene, etc.
     this.inputController = new InputController(this);
     this.cameraController = new CameraController(this.camera);
@@ -91,21 +94,42 @@ class Game {
     this.start();
   }
 
+  findSafeStartPosition() {
+    // Start at origin with a high position, then raycast down to find terrain
+    let x = 0;
+    let z = 0;
+    let y = 50; // Start high above terrain
+
+    // Try to get terrain height at start position
+    const chunkCoords = this.cityGenerator.getChunkCoords({x, z});
+    const key = `${chunkCoords.x},${chunkCoords.z}`;
+    const chunk = this.cityGenerator.objects.get(key);
+
+    if (chunk && chunk.terrain) {
+      // Get height from terrain
+      const terrainHeight = chunk.terrain.getHeightAt(x, z);
+      // Add a safe margin above terrain
+      y = terrainHeight + this.player.radius * 4;
+    }
+
+    return {x, y, z};
+  }
+
   start() {
     this.frame = 0;
     this.clock = new THREE.Clock();
     this.fixedTimeStep = 1.0 / 60.0;
     this.maxSubSteps = 3;
-    
+
     const animate = () => {
       requestAnimationFrame(animate);
 
       try {
         const delta = this.clock.getDelta();
-        
+
         // Step the physics world
         this.physicsManager.step(this.fixedTimeStep, delta, this.maxSubSteps);
-        
+
         // In demo mode, automatically apply a random force to the ball
         if (this.gameState === "TITLE" && this.demoController) {
           this.demoController.update(delta);
@@ -113,26 +137,26 @@ class Game {
 
         if (this.player) {
           this.player.update();
-          
+
           // Update biome display for current player position
           this.updateBiomeDisplay();
         }
-        
+
         // Check collisions between local player and remote players
         if (this.collisionHandler) {
           this.collisionHandler.checkPlayerCollisions();
         }
-        
+
         // Update camera position based on game state
         if (this.cameraController && this.player) {
           this.cameraController.update(this.gameState, this.player, delta);
         }
-        
+
         // Update city chunks every frame
         if (this.cityGenerator && this.player && this.player.body) {
           this.cityGenerator.update(this.player.body.position);
         }
-        
+
         // Update flying creatures
         const currentTime = performance.now() / 1000;
         if (this.cityGenerator && this.cityGenerator.objects) {
@@ -163,26 +187,26 @@ class Game {
       } catch (error) {
         console.error("Error in animation loop:", error);
       }
-      
+
       this.frame++;
     };
 
     animate();
   }
-  
+
   updateBiomeDisplay() {
     if (!this.player || !this.player.mesh || !this.cityGenerator) return;
-    
+
     const pos = this.player.mesh.position;
     const biome = this.cityGenerator.getBiomeForPosition(pos.x, pos.z);
-    
+
     let biomeName = "Unknown";
     if (biome === this.cityGenerator.biomes.CITY) biomeName = "City";
     else if (biome === this.cityGenerator.biomes.FOREST) biomeName = "Forest";
     else if (biome === this.cityGenerator.biomes.DESERT) biomeName = "Desert";
     else if (biome === this.cityGenerator.biomes.MOUNTAINS) biomeName = "Mountains";
     else if (biome === this.cityGenerator.biomes.SNOW) biomeName = "Snow";
-    
+
     document.getElementById('biome-value').textContent = biomeName;
   }
 }

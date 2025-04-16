@@ -1,7 +1,8 @@
 export class TerrainChunk {
-  constructor(scene, world, chunkX, chunkZ, chunkSize, biome, noiseFunction) {
+  constructor(scene, world, physicsManager, chunkX, chunkZ, chunkSize, biome, noiseFunction) {
     this.scene = scene;
     this.world = world;
+    this.physicsManager = physicsManager;
     this.chunkX = chunkX;
     this.chunkZ = chunkZ;
     this.chunkSize = chunkSize;
@@ -9,7 +10,6 @@ export class TerrainChunk {
     this.noiseFunction = noiseFunction;
     
     // The resolution of the terrain mesh (number of vertices per side)
-    // Increased for smoother terrain
     this.resolution = 32;
     
     // Store the heightmap data for collision queries
@@ -72,8 +72,11 @@ export class TerrainChunk {
     );
     this.scene.add(this.mesh);
     
-    // Create physics for the terrain
-    this.createTerrainPhysics();
+    // Create physics for the terrain and register the material
+    const terrainMaterial = this.createTerrainPhysics();
+    if (terrainMaterial && this.physicsManager) {
+      this.physicsManager.addTerrainMaterial(terrainMaterial);
+    }
   }
   
   createTerrainPhysics() {
@@ -108,6 +111,13 @@ export class TerrainChunk {
     
     // Add the body to the physics world
     this.world.addBody(this.body);
+    
+    // Create a material for the terrain surface
+    const terrainMaterial = new CANNON.Material('terrain');
+    this.body.material = terrainMaterial;
+    
+    // Return the terrain material so it can be used for creating contact pairs
+    return terrainMaterial;
   }
   
   // Reshape the height data for Cannon.js heightfield

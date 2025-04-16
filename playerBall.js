@@ -1,7 +1,8 @@
 export class PlayerBall {
-  constructor(scene, world) {
+  constructor(scene, world, physicsManager) {
     this.scene = scene;
     this.world = world;
+    this.physicsManager = physicsManager; // Store reference for material access
     this.collectedObjects = [];
     this.radius = 0.5;
     this.isBoosting = false;
@@ -22,13 +23,23 @@ export class PlayerBall {
       mass: 2,
       type: CANNON.Body.DYNAMIC,
       linearDamping: 0.4,
-      angularDamping: 0.4
+      angularDamping: 0.4,
+      material: physicsManager.playerMaterial, // Use player material
+      allowSleep: false // Never let the player sleep for continuous collision detection
     });
 
     // Add the main sphere shape
     const sphereShape = new CANNON.Sphere(this.radius);
     this.compoundBody.addShape(sphereShape);
-    this.compoundBody.position.set(0, this.radius, 0);
+    this.compoundBody.position.set(0, this.radius * 4, 0); // Start a bit higher
+    
+    // Increase collision detection precision
+    this.compoundBody.collisionFilterGroup = 1;
+    this.compoundBody.collisionFilterMask = 1;
+    
+    // Adjust more properties for better physics
+    this.compoundBody.fixedRotation = false;
+    this.compoundBody.updateMassProperties();
 
     // Replace this.body with this.compoundBody
     this.body = this.compoundBody;

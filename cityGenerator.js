@@ -2,9 +2,10 @@ import { FlyingCreature } from './flyingCreatures.js';
 import { TerrainChunk } from './TerrainChunk.js';
 
 export class CityGenerator {
-  constructor(scene, world) {
+  constructor(scene, world, physicsManager) {
     this.scene = scene;
     this.world = world;
+    this.physicsManager = physicsManager;
     this.chunkSize = 100;
     this.loadedChunks = new Set();
     
@@ -299,7 +300,8 @@ export class CityGenerator {
     // Create a terrain chunk with the proper noise function
     const terrainChunk = new TerrainChunk(
       this.scene, 
-      this.world, 
+      this.world,
+      this.physicsManager, 
       chunk.x, 
       chunk.z, 
       this.chunkSize,
