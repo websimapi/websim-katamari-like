@@ -212,6 +212,25 @@ export class PlayerBall {
     });
   }
 
+  absorbPlayer(peerRadius) {
+    const objectVolume = (4 / 3) * Math.PI * Math.pow(peerRadius, 3);
+    const currentVolume = (4 / 3) * Math.PI * Math.pow(this.radius, 3);
+    const newVolume = currentVolume + objectVolume;
+    const newRadius = Math.pow((3 * newVolume) / (4 * Math.PI), 1 / 3);
+
+    this.radius = newRadius;
+    this.body.shapes[0].radius = this.radius;
+
+    const newGeometry = new THREE.SphereGeometry(this.radius, 32, 32);
+    this.mesh.geometry.dispose();
+    this.mesh.geometry = newGeometry;
+
+    this.attachedMeshes.forEach(attached => {
+      const newPos = attached.direction.clone().multiplyScalar(this.radius);
+      attached.mesh.position.copy(newPos);
+    });
+  }
+
   getSize() {
     return this.radius * 2;
   }

@@ -55,8 +55,12 @@ export class MultiplayerManager {
     this.room.subscribePresenceUpdateRequests((updateRequest, fromClientId) => {
       if (updateRequest.type === 'absorb') {
         // If another player is trying to absorb us
-        // We need to check if we're actually smaller
-        if (updateRequest.absorberRadius > this.player.radius + 5) {
+        // We need to check if the absorber is actually larger by 10% in mass
+        const localMass = Math.pow(this.player.radius, 3);
+        const absorberMass = Math.pow(updateRequest.absorberRadius, 3);
+        
+        // Check if absorber is at least 10% larger in mass
+        if (absorberMass / localMass >= 1.1) {
           // We're being absorbed, let's update our presence to reflect that
           this.room.updatePresence({
             isAbsorbed: true,
@@ -101,6 +105,11 @@ export class MultiplayerManager {
     
     // Skip if the player is absorbed (no longer visible)
     if (playerData.isAbsorbed) {
+      // If we're the one who absorbed this player, increase our size
+      if (playerData.absorbedBy === this.room.clientId && this.player) {
+        // Add size to our player based on the absorbed player's radius
+        this.player.absorbPlayer(playerData.radius || 1);
+      }
       this.handleDisconnect(clientId);
       return;
     }

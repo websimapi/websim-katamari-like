@@ -85,13 +85,18 @@ export class CollisionHandler {
       const peerRadius = group.userData.mainBallMesh.geometry.parameters.radius;
       const distance = localPos.distanceTo(group.position);
       if (distance < localRadius + peerRadius) {
-        // If the local player is at least 5m larger, absorb the remote player.
-        if (localRadius >= peerRadius + 5) {
+        // Calculate mass ratio based on radius cubed (volume/mass)
+        const localMass = Math.pow(localRadius, 3);
+        const peerMass = Math.pow(peerRadius, 3);
+        const massRatio = localMass / peerMass;
+        
+        // If the local player is at least 10% larger in mass, absorb the remote player
+        if (massRatio >= 1.1) {
           // Request to absorb the remote player
           this.game.multiplayerManager.requestAbsorbPlayer(clientId);
         }
-        // Otherwise, if the remote player is at least 5m larger, mark local player as stuck.
-        else if (peerRadius >= localRadius + 5) {
+        // Otherwise, if the remote player is at least 10% larger, mark local player as stuck
+        else if (peerMass / localMass >= 1.1) {
           if (!this.player.isStuck) {
             this.player.isStuck = true;
             this.player.stuckTo = clientId;
