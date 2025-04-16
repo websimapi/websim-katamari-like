@@ -15,39 +15,48 @@ export class CollisionHandler {
 
   setupCollisionHandling() {
     this.player.body.addEventListener('collide', (event) => {
+      // Guard against undefined event or body
+      if (!event || !event.body) return;
+      
       const otherBody = event.body;
 
-      if (otherBody.mass === 0) return;
+      if (!otherBody || otherBody.mass === 0) return;
 
       // Only check ground objects for collision with the player.
       const groundObjects = [];
       this.cityGenerator.objects.forEach(chunkData => {
-        groundObjects.push(...chunkData.ground);
+        if (chunkData && chunkData.ground) {
+          groundObjects.push(...chunkData.ground);
+        }
       });
-      const object = groundObjects.find((obj) => obj.body === otherBody);
+      
+      const object = groundObjects.find((obj) => obj && obj.body === otherBody);
 
-      if (object) {
-        const objectSize =
-          object.body.shapes[0].radius ||
-          Math.max(
-            object.body.shapes[0].halfExtents.x,
-            object.body.shapes[0].halfExtents.y,
-            object.body.shapes[0].halfExtents.z
-          );
+      if (object && object.body && object.body.shapes && object.body.shapes[0]) {
+        const objectShape = object.body.shapes[0];
+        const objectSize = 
+          (objectShape.radius) || 
+          (objectShape.halfExtents && Math.max(
+            objectShape.halfExtents.x,
+            objectShape.halfExtents.y,
+            objectShape.halfExtents.z
+          )) || 0;
 
         if (objectSize < this.player.radius) {
           // Update the pickup preview UI before absorbing the object
           const previewClone = object.mesh.clone();
-          const itemName = object.mesh.userData.itemName || "Collectible";
+          const itemName = object.mesh.userData && object.mesh.userData.itemName || "Collectible";
           this.pickupPreview.update(previewClone, itemName);
 
           this.player.absorbObject(object);
 
           // Remove object from the chunk's ground objects array
           this.cityGenerator.objects.forEach(chunkData => {
-            const index = chunkData.ground.findIndex((obj) => obj.body === otherBody);
-            if (index !== -1) {
-              chunkData.ground.splice(index, 1);
+            if (chunkData && chunkData.ground) {
+              const index = chunkData.ground.findIndex((obj) => obj && obj.body === otherBody);
+              if (index !== -1) {
+                chunkData.ground.splice(index, 1);
+              }
             }
           });
 
@@ -80,10 +89,14 @@ export class CollisionHandler {
   }
 
   checkPlayerCollisions() {
+    if (!this.player || !this.player.mesh) return;
+    
     const localPos = this.player.mesh.position;
     const localRadius = this.player.radius;
     for (const clientId in this.peerPlayers) {
       const group = this.peerPlayers[clientId];
+      if (!group || !group.userData || !group.userData.mainBallMesh) continue;
+      
       // Get remote player's radius from its main ball mesh
       const peerRadius = group.userData.mainBallMesh.geometry.parameters.radius;
       const distance = localPos.distanceTo(group.position);

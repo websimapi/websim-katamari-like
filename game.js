@@ -45,18 +45,20 @@ class Game {
     this.player.stuckTo = null;
 
     // Initialize subsystems
-    this.inputController = new InputController(this);
-    this.cameraController = new CameraController(this.camera);
-    this.demoController = new DemoController(this.player);
     this.multiplayerManager = new MultiplayerManager(this);
     this.room = this.multiplayerManager.room;
     this.peerPlayers = this.multiplayerManager.peerPlayers;
     this.peerBodies = this.multiplayerManager.peerBodies;
-    this.collisionHandler = new CollisionHandler(this);
     
-    // Initialize UI components
+    // Initialize UI components - must happen after multiplayer, player and scene setup
     this.pickupPreview = new PickupPreview();
     this.minimap = new Minimap();
+    
+    // These controllers need the player, scene, etc.
+    this.inputController = new InputController(this);
+    this.cameraController = new CameraController(this.camera);
+    this.demoController = new DemoController(this.player);
+    this.collisionHandler = new CollisionHandler(this);
 
     // Load the audio file
     this.audio = new Audio('Electric Dreamers - Track 2 - Sonauto (2).wav');
@@ -67,7 +69,7 @@ class Game {
       'pointerdown',
       () => {
         if (!this.audioPlayed) {
-          this.audio.play();
+          this.audio.play().catch(err => console.log("Audio play failed:", err));
           this.audioPlayed = true;
         }
       },
@@ -97,46 +99,66 @@ class Game {
     const animate = () => {
       requestAnimationFrame(animate);
 
-      const delta = this.clock.getDelta();
-      this.physicsManager.step(this.fixedTimeStep, delta, this.maxSubSteps);
-      
-      // In demo mode, automatically apply a random force to the ball
-      if (this.gameState === "TITLE") {
-        this.demoController.update(delta);
+      try {
+        const delta = this.clock.getDelta();
+        
+        // Step the physics world
+        this.physicsManager.step(this.fixedTimeStep, delta, this.maxSubSteps);
+        
+        // In demo mode, automatically apply a random force to the ball
+        if (this.gameState === "TITLE" && this.demoController) {
+          this.demoController.update(delta);
+        }
+
+        if (this.player) {
+          this.player.update();
+        }
+        
+        // Check collisions between local player and remote players
+        if (this.collisionHandler) {
+          this.collisionHandler.checkPlayerCollisions();
+        }
+        
+        // Update camera position based on game state
+        if (this.cameraController && this.player) {
+          this.cameraController.update(this.gameState, this.player, delta);
+        }
+        
+        // Update city chunks every other frame for performance
+        if (this.frame % 2 === 0 && this.cityGenerator && this.player && this.player.body) {
+          this.cityGenerator.update(this.player.body.position);
+        }
+        
+        // Update flying creatures
+        const currentTime = performance.now() / 1000;
+        if (this.cityGenerator && this.cityGenerator.objects) {
+          this.cityGenerator.objects.forEach(chunkData => {
+            if (chunkData && chunkData.flying) {
+              chunkData.flying.forEach(creature => {
+                if (creature) creature.update(currentTime);
+              });
+            }
+          });
+        }
+
+        // Send player state to peers
+        if (this.multiplayerManager) {
+          this.multiplayerManager.sendPlayerState(this.gameState);
+          this.multiplayerManager.updatePeers();
+        }
+
+        // Update the minimap
+        if (this.minimap && this.player && this.peerPlayers) {
+          this.minimap.update(this.player, this.peerPlayers);
+        }
+
+        // Render the scene
+        if (this.sceneManager && this.camera) {
+          this.sceneManager.render(this.camera);
+        }
+      } catch (error) {
+        console.error("Error in animation loop:", error);
       }
-
-      this.player.update();
-      
-      // Check collisions between local player and remote players
-      this.collisionHandler.checkPlayerCollisions();
-      
-      // Update camera position based on game state
-      this.cameraController.update(this.gameState, this.player, delta);
-      
-      // Update city chunks every other frame for performance
-      if (this.frame % 2 === 0) {
-        this.cityGenerator.update(this.player.body.position);
-      }
-      
-      // Update flying creatures
-      const currentTime = performance.now() / 1000;
-      this.cityGenerator.objects.forEach(chunkData => {
-        chunkData.flying.forEach(creature => {
-          creature.update(currentTime);
-        });
-      });
-
-      // Send player state to peers
-      this.multiplayerManager.sendPlayerState(this.gameState);
-
-      // Update peer physics/visuals
-      this.multiplayerManager.updatePeers();
-
-      // Update the minimap
-      this.minimap.update(this.player, this.peerPlayers);
-
-      // Render the scene
-      this.sceneManager.render(this.camera);
       
       this.frame++;
     };

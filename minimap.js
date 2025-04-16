@@ -1,6 +1,10 @@
 export class Minimap {
   constructor() {
     this.canvas = document.getElementById('minimap-canvas');
+    if (!this.canvas) {
+      console.error("Minimap canvas not found");
+      return;
+    }
     this.ctx = this.canvas.getContext('2d');
     // Set a fixed size as defined in the HTML/CSS (e.g., 150x150)
     this.width = this.canvas.width;
@@ -10,6 +14,8 @@ export class Minimap {
   }
 
   update(localPlayer, peerPlayers) {
+    if (!this.ctx || !localPlayer || !localPlayer.mesh || !localPlayer.mesh.position) return;
+    
     // Clear the minimap
     this.ctx.clearRect(0, 0, this.width, this.height);
     
@@ -42,15 +48,19 @@ export class Minimap {
     this.drawIndicator(centerX, centerY, 5);
     
     // Draw peer players as red circles relative to local player's position
-    Object.keys(peerPlayers).forEach(clientId => {
-      const peer = peerPlayers[clientId];
-      const dx = peer.position.x - localPlayer.mesh.position.x;
-      const dz = peer.position.z - localPlayer.mesh.position.z;
-      const x = centerX + dx * this.scale;
-      const y = centerY + dz * this.scale;
-      this.ctx.fillStyle = 'red';
-      this.drawIndicator(x, y, 5);
-    });
+    if (peerPlayers) {
+      Object.keys(peerPlayers).forEach(clientId => {
+        const peer = peerPlayers[clientId];
+        if (!peer || !peer.position) return;
+        
+        const dx = peer.position.x - localPlayer.mesh.position.x;
+        const dz = peer.position.z - localPlayer.mesh.position.z;
+        const x = centerX + dx * this.scale;
+        const y = centerY + dz * this.scale;
+        this.ctx.fillStyle = 'red';
+        this.drawIndicator(x, y, 5);
+      });
+    }
     
     // Draw a border around the minimap
     this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
@@ -59,6 +69,7 @@ export class Minimap {
   }
 
   drawIndicator(x, y, radius) {
+    if (!this.ctx) return;
     this.ctx.beginPath();
     this.ctx.arc(x, y, radius, 0, 2 * Math.PI);
     this.ctx.fill();

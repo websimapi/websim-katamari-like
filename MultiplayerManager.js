@@ -22,6 +22,8 @@ export class MultiplayerManager {
   setupMultiplayer() {
     // Handle incoming messages for peer ball updates, disconnections, and pickup removals
     this.room.onmessage = (event) => {
+      if (!event || !event.data) return;
+      
       const data = event.data;
       switch (data.type) {
         // When receiving ball updates, we create/update a remote physics body
@@ -29,11 +31,15 @@ export class MultiplayerManager {
           // Ignore our own ball updates
           if (data.clientId === this.room.party.client.id) return;
           
+          // Validate key properties in the update data
+          if (!data.position || !data.quaternion) return;
+          
           // If we haven't seen this peer yet, create a detailed ball representation along with a physics body.
           if (!this.peerPlayers[data.clientId]) {
             const group = new THREE.Group();
             // Create main ball mesh reflecting radius
-            const geometry = new THREE.SphereGeometry(data.radius, 32, 32);
+            const radius = data.radius || 1;
+            const geometry = new THREE.SphereGeometry(radius, 32, 32);
             const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
             const ballMesh = new THREE.Mesh(geometry, material);
             ballMesh.castShadow = true;
@@ -42,13 +48,14 @@ export class MultiplayerManager {
             // Add attachments as simple spheres
             if (data.attachedData) {
               data.attachedData.forEach(attachment => {
+                if (!attachment || !attachment.direction) return;
                 const attGeom = new THREE.SphereGeometry(0.1, 8, 8);
                 const attMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
                 const attMesh = new THREE.Mesh(attGeom, attMat);
                 attMesh.position.set(
-                  attachment.direction.x * data.radius,
-                  attachment.direction.y * data.radius,
-                  attachment.direction.z * data.radius
+                  attachment.direction.x * radius,
+                  attachment.direction.y * radius,
+                  attachment.direction.z * radius
                 );
                 group.add(attMesh);
               });
@@ -57,8 +64,8 @@ export class MultiplayerManager {
             this.peerPlayers[data.clientId] = group;
             
             // Create a Cannon physics body for this remote player so that collisions work.
-            const mass = data.radius * 2; // Simplified mass estimation.
-            const shape = new CANNON.Sphere(data.radius);
+            const mass = radius * 2; // Simplified mass estimation.
+            const shape = new CANNON.Sphere(radius);
             const body = new CANNON.Body({
               mass: mass,
               shape: shape,
@@ -72,6 +79,9 @@ export class MultiplayerManager {
             // Update existing peer ball (both 3D group and physics body)
             const group = this.peerPlayers[data.clientId];
             const body = this.peerBodies[data.clientId];
+            
+            if (!group || !body) return;
+            
             const targetPos = new CANNON.Vec3(data.position.x, data.position.y, data.position.z);
             // Compute velocity update based on difference (assuming network updates roughly every 100ms)
             const velocityFactor = 10; // 1/0.1 sec approximation
@@ -85,7 +95,7 @@ export class MultiplayerManager {
             body.quaternion.set(data.quaternion.x, data.quaternion.y, data.quaternion.z, data.quaternion.w);
             
             // If radius has changed, update collision shape and the main mesh geometry.
-            if (body.shapes[0].radius !== data.radius) {
+            if (body.shapes[0] && body.shapes[0].radius !== data.radius) {
               // Remove old shape and add new shape with updated radius.
               body.shapes = [];
               const newShape = new CANNON.Sphere(data.radius);
@@ -95,9 +105,13 @@ export class MultiplayerManager {
               body.updateMassProperties();
               
               // Update main ball mesh geometry.
-              const mainBallMesh = group.userData.mainBallMesh;
-              mainBallMesh.geometry.dispose();
-              mainBallMesh.geometry = new THREE.SphereGeometry(data.radius, 32, 32);
+              if (group.userData && group.userData.mainBallMesh) {
+                const mainBallMesh = group.userData.mainBallMesh;
+                if (mainBallMesh.geometry) {
+                  mainBallMesh.geometry.dispose();
+                  mainBallMesh.geometry = new THREE.SphereGeometry(data.radius, 32, 32);
+                }
+              }
             }
             
             // Update attachments: remove existing attachments except the main ball mesh.
@@ -109,6 +123,7 @@ export class MultiplayerManager {
             }
             if (data.attachedData) {
               data.attachedData.forEach(attachment => {
+                if (!attachment || !attachment.direction) return;
                 const attGeom = new THREE.SphereGeometry(0.1, 8, 8);
                 const attMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
                 const attMesh = new THREE.Mesh(attGeom, attMat);
@@ -136,7 +151,9 @@ export class MultiplayerManager {
         case "object-picked-up":
           // When a peer picks up an object, remove that object from our city as well.
           // This ensures all peers see the same map data.
-          this.game.cityGenerator.removeObjectByBodyId(data.bodyId);
+          if (data.bodyId && this.game.cityGenerator) {
+            this.game.cityGenerator.removeObjectByBodyId(data.bodyId);
+          }
           break;
         default:
           // Handle other event types if needed
@@ -150,7 +167,7 @@ export class MultiplayerManager {
     for (const clientId in this.peerBodies) {
       const body = this.peerBodies[clientId];
       const group = this.peerPlayers[clientId];
-      if (group && body) {
+      if (group && body && body.position && body.quaternion) {
         group.position.copy(body.position);
         group.quaternion.copy(body.quaternion);
       }
@@ -158,7 +175,19 @@ export class MultiplayerManager {
   }
 
   sendPlayerState(gameState) {
+    if (!this.player || !this.player.mesh || !this.player.mesh.position || !this.player.mesh.quaternion) {
+      return;
+    }
+    
     if (performance.now() - this.lastSentPosition > 100) {
+      const attachedData = this.player.attachedMeshes.map(att => {
+        if (!att || !att.direction || !att.mesh) return null;
+        return {
+          direction: { x: att.direction.x, y: att.direction.y, z: att.direction.z },
+          itemName: att.mesh.userData && att.mesh.userData.itemName || ""
+        };
+      }).filter(data => data !== null);
+      
       this.room.send({
         type: "ball-update",
         position: { 
@@ -173,10 +202,7 @@ export class MultiplayerManager {
           w: this.player.mesh.quaternion.w 
         },
         radius: this.player.radius,
-        attachedData: this.player.attachedMeshes.map(att => ({
-          direction: { x: att.direction.x, y: att.direction.y, z: att.direction.z },
-          itemName: att.mesh.userData.itemName || ""
-        })),
+        attachedData: attachedData,
         isDemo: gameState === "TITLE"
       });
       this.lastSentPosition = performance.now();

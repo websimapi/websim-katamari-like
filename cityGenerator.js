@@ -13,6 +13,8 @@ export class CityGenerator {
   }
 
   update(playerPosition) {
+    if (!playerPosition) return;
+    
     const currentChunk = this.getChunkCoords(playerPosition);
     const nearbyChunks = this.getNearbyChunks(currentChunk);
     
@@ -395,20 +397,30 @@ export class CityGenerator {
   }
 
   removeObjectByBodyId(bodyId) {
+    if (!bodyId) return;
+    
     this.objects.forEach((chunkData, key) => {
+      if (!chunkData || !chunkData.ground) return;
+      
       for (let i = chunkData.ground.length - 1; i >= 0; i--) {
-        if (chunkData.ground[i].body.id === bodyId) {
-          const obj = chunkData.ground[i];
-          if (obj.mesh.geometry) obj.mesh.geometry.dispose();
-          if (obj.mesh.material) {
-            if (Array.isArray(obj.mesh.material)) {
-              obj.mesh.material.forEach(mat => mat.dispose());
-            } else {
-              obj.mesh.material.dispose();
+        const obj = chunkData.ground[i];
+        if (!obj || !obj.body) continue;
+        
+        if (obj.body.id === bodyId) {
+          if (obj.mesh) {
+            if (obj.mesh.geometry) obj.mesh.geometry.dispose();
+            if (obj.mesh.material) {
+              if (Array.isArray(obj.mesh.material)) {
+                obj.mesh.material.forEach(mat => mat && mat.dispose());
+              } else if (obj.mesh.material) {
+                obj.mesh.material.dispose();
+              }
             }
+            this.scene.remove(obj.mesh);
           }
-          this.scene.remove(obj.mesh);
-          this.world.removeBody(obj.body);
+          if (obj.body) {
+            this.world.removeBody(obj.body);
+          }
           chunkData.ground.splice(i, 1);
           // Found and removed, exit the loop.
           return;
