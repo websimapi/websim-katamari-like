@@ -10,7 +10,7 @@ export class Recorder {
     return !!(window.MediaRecorder && this.canvas.captureStream);
   }
 
-  start() {
+  start(audioStream) {
     if (!this.isSupported()) {
       console.warn("Recording not supported in this browser.");
       return false;
@@ -21,7 +21,16 @@ export class Recorder {
     try {
       // Capture the stream from the canvas
       // 30 FPS is a good default
-      const stream = this.canvas.captureStream(30); 
+      const canvasStream = this.canvas.captureStream(30);
+      
+      // Combine video with audio if provided
+      let stream = canvasStream;
+      if (audioStream) {
+        stream = new MediaStream([
+            ...canvasStream.getVideoTracks(),
+            ...audioStream.getAudioTracks()
+        ]);
+      }
 
       // Determine supported mime type
       const mimeTypes = [

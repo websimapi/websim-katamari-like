@@ -14,6 +14,8 @@ export class CollisionHandler {
   }
 
   setupCollisionHandling() {
+    this.processingQueue = [];
+    
     this.player.body.addEventListener('collide', (event) => {
       // Guard against undefined event or body
       if (!event || !event.body) return;
@@ -33,6 +35,9 @@ export class CollisionHandler {
       const object = groundObjects.find((obj) => obj && obj.body === otherBody);
 
       if (object && object.body && object.body.shapes && object.body.shapes[0]) {
+        // Check if already queued to prevent double processing in same tick
+        if (this.processingQueue.includes(object)) return;
+
         const objectShape = object.body.shapes[0];
         
         // Improved size calculation to handle Cylinder and other shapes
@@ -54,40 +59,58 @@ export class CollisionHandler {
         }
 
         if (objectSize < this.player.radius) {
-          // Update the pickup preview UI before absorbing the object
-          const previewClone = object.mesh.clone();
-          const itemName = object.mesh.userData && object.mesh.userData.itemName || "Collectible";
-          this.pickupPreview.update(previewClone, itemName);
-          
-          // Play silly scream for citizens
-          if (itemName === "Citizen") {
-            const scream = new Audio('scream.mp3');
-            scream.volume = 0.3;
-            scream.play().catch(e => console.log(e));
-          }
-
-          this.player.absorbObject(object);
-
-          // Remove object from the chunk's ground objects array
-          this.cityGenerator.objects.forEach(chunkData => {
-            if (chunkData && chunkData.ground) {
-              const index = chunkData.ground.findIndex((obj) => obj && obj.body === otherBody);
-              if (index !== -1) {
-                chunkData.ground.splice(index, 1);
-              }
-            }
-          });
-
-          document.getElementById('size-value').textContent =
-            this.player.getSize().toFixed(1);
-          document.getElementById('score-value').textContent =
-            this.player.getCollectedCount();
-
-          // Notify the multiplayer manager about the object pickup
-          this.game.multiplayerManager.notifyObjectPickup(object.body.id);
+          this.processingQueue.push(object);
         }
       }
     });
+  }
+
+  update() {
+    // Process queued collisions outside of physics step to avoid "x is undefined" Cannon errors
+    while (this.processingQueue.length > 0) {
+      const object = this.processingQueue.shift();
+      
+      // Double check object validity (it might have been removed elsewhere)
+      if (!object.body.world) continue;
+      
+      const itemName = object.mesh.userData && object.mesh.userData.itemName || "Collectible";
+
+      // Update the pickup preview UI
+      const previewClone = object.mesh.clone();
+      this.pickupPreview.update(previewClone, itemName);
+      
+      // Play silly scream for citizens
+      if (itemName === "Citizen") {
+        if (this.game.playScream) {
+            this.game.playScream();
+        } else {
+            const scream = new Audio('scream.mp3');
+            scream.volume = 0.3;
+            scream.play().catch(e => console.log(e));
+        }
+      }
+
+      this.player.absorbObject(object);
+
+      // Remove object from the chunk's ground objects array
+      this.cityGenerator.objects.forEach(chunkData => {
+        if (chunkData && chunkData.ground) {
+          const index = chunkData.ground.findIndex((obj) => obj && obj.body === object.body);
+          if (index !== -1) {
+            chunkData.ground.splice(index, 1);
+          }
+        }
+      });
+
+      const sizeVal = document.getElementById('size-value');
+      if (sizeVal) sizeVal.textContent = this.player.getSize().toFixed(1);
+      
+      const scoreVal = document.getElementById('score-value');
+      if (scoreVal) scoreVal.textContent = this.player.getCollectedCount();
+
+      // Notify the multiplayer manager about the object pickup
+      this.game.multiplayerManager.notifyObjectPickup(object.body.id);
+    }
   }
 
   checkPlayerCollisions() {

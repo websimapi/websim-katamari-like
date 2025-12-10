@@ -55,6 +55,37 @@ class Game {
     this.pickupPreview = new PickupPreview();
     this.minimap = new Minimap();
 
+    // Setup Audio Context for mixing and recording
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    this.audioContext = new AudioContext();
+    this.audioDest = this.audioContext.createMediaStreamDestination();
+
+    // Load the audio file
+    this.audio = new Audio('Electric Dreamers - Track 2 - Sonauto (2).wav');
+    this.audio.loop = true;
+    this.audio.crossOrigin = "anonymous";
+    this.audioPlayed = false;
+
+    // Connect audio element to context
+    // NOTE: This might need user interaction first in some browsers, handled below
+    try {
+        const track = this.audioContext.createMediaElementSource(this.audio);
+        track.connect(this.audioDest);
+        track.connect(this.audioContext.destination);
+    } catch(e) {
+        console.warn("Audio setup issue:", e);
+    }
+    
+    // Load scream buffer
+    this.screamBuffer = null;
+    fetch('scream.mp3')
+      .then(response => response.arrayBuffer())
+      .then(arrayBuffer => this.audioContext.decodeAudioData(arrayBuffer))
+      .then(audioBuffer => {
+        this.screamBuffer = audioBuffer;
+      })
+      .catch(e => console.error("Error loading scream:", e));
+
     // Setup Recorder
     this.recorder = new Recorder(this.renderer.domElement);
     const recordBtn = document.getElementById('record-btn');
@@ -65,7 +96,7 @@ class Game {
           this.recorder.stop();
           recordBtn.classList.remove('recording');
         } else {
-          if (this.recorder.start()) {
+          if (this.recorder.start(this.audioDest.stream)) {
             recordBtn.classList.add('recording');
           }
         }
@@ -80,15 +111,13 @@ class Game {
     this.demoController = new DemoController(this.player);
     this.collisionHandler = new CollisionHandler(this);
 
-    // Load the audio file
-    this.audio = new Audio('Electric Dreamers - Track 2 - Sonauto (2).wav');
-    this.audio.loop = true;
-    this.audioPlayed = false;
-
     window.addEventListener(
       'pointerdown',
       () => {
         if (!this.audioPlayed) {
+          if (this.audioContext.state === 'suspended') {
+            this.audioContext.resume();
+          }
           this.audio.play().catch(err => console.log("Audio play failed:", err));
           this.audioPlayed = true;
         }
@@ -108,6 +137,16 @@ class Game {
     }, { once: true });
 
     this.start();
+  }
+
+  playScream() {
+    if (this.screamBuffer && this.audioContext) {
+      const source = this.audioContext.createBufferSource();
+      source.buffer = this.screamBuffer;
+      source.connect(this.audioDest);
+      source.connect(this.audioContext.destination);
+      source.start(0);
+    }
   }
 
   start() {
@@ -137,6 +176,7 @@ class Game {
         // Check collisions between local player and remote players
         if (this.collisionHandler) {
           this.collisionHandler.checkPlayerCollisions();
+          this.collisionHandler.update();
         }
         
         // Update camera position based on game state
