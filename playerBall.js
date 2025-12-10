@@ -9,9 +9,14 @@ export class PlayerBall {
     // Create the player mesh
     this.mesh = new THREE.Mesh(
       new THREE.SphereGeometry(this.radius, 32, 32),
-      new THREE.MeshPhongMaterial({ color: 0xFF69B4, flatShading: true })
+      new THREE.MeshStandardMaterial({ 
+        color: 0xFF69B4, 
+        roughness: 0.4, 
+        metalness: 0.3 
+      })
     );
     this.mesh.castShadow = true;
+    this.mesh.receiveShadow = true;
     scene.add(this.mesh);
 
     // Keep track of attached meshes and their bodies
@@ -195,25 +200,6 @@ export class PlayerBall {
     });
 
     const objectVolume = (4 / 3) * Math.PI * Math.pow(objectSize, 3);
-    const currentVolume = (4 / 3) * Math.PI * Math.pow(this.radius, 3);
-    const newVolume = currentVolume + objectVolume;
-    const newRadius = Math.pow((3 * newVolume) / (4 * Math.PI), 1 / 3);
-
-    this.radius = newRadius;
-    this.body.shapes[0].radius = this.radius;
-
-    const newGeometry = new THREE.SphereGeometry(this.radius, 32, 32);
-    this.mesh.geometry.dispose();
-    this.mesh.geometry = newGeometry;
-
-    this.attachedMeshes.forEach(attached => {
-      const newPos = attached.direction.clone().multiplyScalar(this.radius);
-      attached.mesh.position.copy(newPos);
-    });
-  }
-
-  absorbPlayer(peerRadius) {
-    const objectVolume = (4 / 3) * Math.PI * Math.pow(peerRadius, 3);
     const currentVolume = (4 / 3) * Math.PI * Math.pow(this.radius, 3);
     const newVolume = currentVolume + objectVolume;
     const newRadius = Math.pow((3 * newVolume) / (4 * Math.PI), 1 / 3);
