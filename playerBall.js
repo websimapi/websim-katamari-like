@@ -138,12 +138,18 @@ export class PlayerBall {
     if (!object || object.body.mass === 0) return;
 
     const objectShape = object.body.shapes[0];
-    const objectSize = objectShape.radius || 
-      Math.max(
-        objectShape.halfExtents.x,
-        objectShape.halfExtents.y,
-        objectShape.halfExtents.z
-      );
+    
+    // Improved size calculation for absorption check
+    let objectSize = 0;
+    if (objectShape.radius !== undefined) {
+      objectSize = objectShape.radius;
+    } else if (objectShape.halfExtents) {
+      objectSize = Math.max(objectShape.halfExtents.x, objectShape.halfExtents.y, objectShape.halfExtents.z);
+    } else if (objectShape instanceof CANNON.Cylinder) {
+       const r = Math.max(objectShape.radiusTop || 0, objectShape.radiusBottom || 0);
+       const h = objectShape.height || 0;
+       objectSize = Math.max(r, h / 2);
+    }
 
     if (objectSize >= this.radius) return;
 
@@ -178,6 +184,19 @@ export class PlayerBall {
         objectShape.halfExtents.y * scale,
         objectShape.halfExtents.z * scale
       ));
+    } else if (objectShape instanceof CANNON.Cylinder) {
+      // Approximate cylinder with a box for the attached shape to avoid complexity
+      // (Cylinder shapes can be finicky in compound bodies with rotations)
+      const r = Math.max(objectShape.radiusTop || 0, objectShape.radiusBottom || 0);
+      const h = objectShape.height || 1;
+      attachedShape = new CANNON.Box(new CANNON.Vec3(
+        r * scale,
+        h / 2 * scale,
+        r * scale
+      ));
+    } else {
+      // Fallback for unknown shapes
+      attachedShape = new CANNON.Sphere(objectSize * scale);
     }
 
     const offset = new CANNON.Vec3(

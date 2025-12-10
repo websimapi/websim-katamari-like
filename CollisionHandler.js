@@ -34,19 +34,37 @@ export class CollisionHandler {
 
       if (object && object.body && object.body.shapes && object.body.shapes[0]) {
         const objectShape = object.body.shapes[0];
-        const objectSize = 
-          (objectShape.radius) || 
-          (objectShape.halfExtents && Math.max(
+        
+        // Improved size calculation to handle Cylinder and other shapes
+        let objectSize = 0;
+        if (objectShape.radius !== undefined) {
+          objectSize = objectShape.radius;
+        } else if (objectShape.halfExtents) {
+          objectSize = Math.max(
             objectShape.halfExtents.x,
             objectShape.halfExtents.y,
             objectShape.halfExtents.z
-          )) || 0;
+          );
+        } else if (objectShape instanceof CANNON.Cylinder) {
+          // Handle Cylinder shape (Human/Citizen)
+          // Use the max dimension as size
+          const r = Math.max(objectShape.radiusTop || 0, objectShape.radiusBottom || 0);
+          const h = objectShape.height || 0;
+          objectSize = Math.max(r, h / 2);
+        }
 
         if (objectSize < this.player.radius) {
           // Update the pickup preview UI before absorbing the object
           const previewClone = object.mesh.clone();
           const itemName = object.mesh.userData && object.mesh.userData.itemName || "Collectible";
           this.pickupPreview.update(previewClone, itemName);
+          
+          // Play silly scream for citizens
+          if (itemName === "Citizen") {
+            const scream = new Audio('scream.mp3');
+            scream.volume = 0.3;
+            scream.play().catch(e => console.log(e));
+          }
 
           this.player.absorbObject(object);
 
