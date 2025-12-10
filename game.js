@@ -9,6 +9,7 @@ import { DemoController } from './DemoController.js';
 import { CollisionHandler } from './CollisionHandler.js';
 import { MultiplayerManager } from './MultiplayerManager.js';
 import { SceneManager } from './SceneManager.js';
+import { Recorder } from './Recorder.js';
 
 class Game {
   constructor() {
@@ -53,6 +54,25 @@ class Game {
     // Initialize UI components - must happen after multiplayer, player and scene setup
     this.pickupPreview = new PickupPreview();
     this.minimap = new Minimap();
+
+    // Setup Recorder
+    this.recorder = new Recorder(this.renderer.domElement);
+    const recordBtn = document.getElementById('record-btn');
+    if (recordBtn) {
+      recordBtn.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent game interaction
+        if (this.recorder.isRecording) {
+          this.recorder.stop();
+          recordBtn.classList.remove('recording');
+        } else {
+          if (this.recorder.start()) {
+            recordBtn.classList.add('recording');
+          }
+        }
+      });
+      // Prevent touch events on the button from moving the joystick or camera
+      recordBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    }
     
     // These controllers need the player, scene, etc.
     this.inputController = new InputController(this);
