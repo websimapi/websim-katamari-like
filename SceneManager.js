@@ -2,8 +2,8 @@ export class SceneManager {
   constructor(camera) {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x87ceeb);
-    // AAA: Fog for depth
-    this.scene.fog = new THREE.FogExp2(0x87ceeb, 0.012);
+    // AAA: Fog for depth - Reduced density for further visibility
+    this.scene.fog = new THREE.FogExp2(0x87ceeb, 0.0025);
 
     this.renderer = new THREE.WebGLRenderer({
       canvas: document.getElementById('gameCanvas'),
@@ -37,8 +37,8 @@ export class SceneManager {
       new THREE.Vector2(window.innerWidth, window.innerHeight),
       1.5, 0.4, 0.85
     );
-    bloomPass.threshold = 0.7;
-    bloomPass.strength = 0.4; // Subtle glow
+    bloomPass.threshold = 0.85; // Higher threshold to reduce glow on everything
+    bloomPass.strength = 0.2; // Lower strength
     bloomPass.radius = 0.5;
     this.composer.addPass(bloomPass);
 
@@ -50,7 +50,7 @@ export class SceneManager {
     const ambientLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
     this.scene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0); // Slightly reduced intensity
     directionalLight.position.set(50, 100, 50);
     directionalLight.castShadow = true;
     

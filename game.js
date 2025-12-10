@@ -131,14 +131,8 @@ class Game {
         
         // Update flying creatures
         const currentTime = performance.now() / 1000;
-        if (this.cityGenerator && this.cityGenerator.objects) {
-          this.cityGenerator.objects.forEach(chunkData => {
-            if (chunkData && chunkData.flying) {
-              chunkData.flying.forEach(creature => {
-                if (creature) creature.update(currentTime);
-              });
-            }
-          });
+        if (this.cityGenerator) {
+            this.cityGenerator.updateAnimations(currentTime, delta);
         }
 
         // Send player state to peers
