@@ -8,7 +8,8 @@ export class SceneManager {
     this.renderer = new THREE.WebGLRenderer({
       canvas: document.getElementById('gameCanvas'),
       antialias: true,
-      powerPreference: "high-performance"
+      powerPreference: "high-performance",
+      preserveDrawingBuffer: true
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     
