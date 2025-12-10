@@ -104,6 +104,21 @@ class Game {
       // Prevent touch events on the button from moving the joystick or camera
       recordBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
     }
+
+    // Mute Button
+    this.isMuted = false;
+    const muteBtn = document.getElementById('mute-btn');
+    if (muteBtn) {
+      muteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.isMuted = !this.isMuted;
+        if (this.audio) {
+          this.audio.muted = this.isMuted;
+        }
+        muteBtn.classList.toggle('muted', this.isMuted);
+      });
+      muteBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    }
     
     // These controllers need the player, scene, etc.
     this.inputController = new InputController(this);

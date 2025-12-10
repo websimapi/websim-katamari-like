@@ -44,6 +44,12 @@ export class PickupPreview {
     this.previewObject.scale.setScalar(scaleFactor);
     // Adjust position so that object is centered
     box.getCenter(this.previewObject.position).multiplyScalar(-1);
+    
+    // Manual adjustment for citizens to prevent head clipping
+    if (name === "Citizen") {
+      this.previewObject.position.y -= 0.15;
+    }
+
     this.scene.add(this.previewObject);
     // Update name in UI
     const nameEl = document.getElementById('pickup-name');
