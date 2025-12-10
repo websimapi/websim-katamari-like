@@ -7,7 +7,8 @@ export class PhysicsManager {
   setupPhysicsWorld() {
     // Strengthen gravity for realism
     this.world.gravity.set(0, -40, 0);
-    this.world.broadphase = new CANNON.NaiveBroadphase();
+    // Use SAPBroadphase for better performance and stability with many objects
+    this.world.broadphase = new CANNON.SAPBroadphase(this.world);
     this.world.solver.iterations = 10;
     this.world.defaultContactMaterial.friction = 0.5;
     this.world.defaultContactMaterial.restitution = 0.3;

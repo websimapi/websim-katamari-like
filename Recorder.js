@@ -33,9 +33,10 @@ export class Recorder {
       }
 
       // Determine supported mime type
+      // Prioritize types that explicitly support audio codecs to avoid errors when recording tracks with audio
       const mimeTypes = [
-        'video/webm;codecs=vp9',
-        'video/webm;codecs=vp8',
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
         'video/webm',
         'video/mp4' 
       ];

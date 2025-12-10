@@ -25,14 +25,17 @@ export class CollisionHandler {
       if (!otherBody || otherBody.mass === 0) return;
 
       // Only check ground objects for collision with the player.
-      const groundObjects = [];
-      this.cityGenerator.objects.forEach(chunkData => {
+      // Optimize: Iterate loaded chunks directly to find the object owner of this body
+      let object = null;
+      for (const chunkData of this.cityGenerator.objects.values()) {
         if (chunkData && chunkData.ground) {
-          groundObjects.push(...chunkData.ground);
+          const found = chunkData.ground.find(obj => obj && obj.body === otherBody);
+          if (found) {
+            object = found;
+            break;
+          }
         }
-      });
-      
-      const object = groundObjects.find((obj) => obj && obj.body === otherBody);
+      }
 
       if (object && object.body && object.body.shapes && object.body.shapes[0]) {
         // Check if already queued to prevent double processing in same tick
