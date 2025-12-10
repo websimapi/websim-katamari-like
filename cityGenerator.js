@@ -169,28 +169,61 @@ export class CityGenerator {
     }
 
     // Place Buildings and Objects
-    const occupied = new Set();
-    const isOccupied = (x, z, size) => {
-        // Simple grid check
-        const k = `${Math.floor(x)},${Math.floor(z)}`;
-        return occupied.has(k);
+    const placedBuildings = [];
+    
+    // Helper to validate building placement
+    const isValidBuildingSpot = (bx, bz, width) => {
+        const half = width / 2;
+        // Check corners against road/sidewalk zones
+        const corners = [
+            { x: bx - half, z: bz - half },
+            { x: bx + half, z: bz - half },
+            { x: bx + half, z: bz + half },
+            { x: bx - half, z: bz + half },
+            { x: bx, z: bz }
+        ];
+        
+        for (const p of corners) {
+            // Ensure strictly inside building zone (no road/sidewalk overlap)
+            if (getZone(p.x, p.z) !== 'building') return false;
+        }
+        
+        // Check overlap with existing buildings (AABB)
+        const margin = 2; // Buffer space
+        for (const b of placedBuildings) {
+            const dx = Math.abs(bx - b.x);
+            const dz = Math.abs(bz - b.z);
+            const safeDist = (width/2) + (b.w/2) + margin;
+            
+            if (dx < safeDist && dz < safeDist) return false;
+        }
+        return true;
     };
 
     // 1. Buildings (In Building Zones)
     const numBuildings = 5 + Math.floor(r() * 5);
     for(let i=0; i<numBuildings; i++) {
-        // Try to find a building spot
-        const bx = r() * this.chunkSize;
-        const bz = r() * this.chunkSize;
-        if (getZone(bx, bz) === 'building') {
+        let placed = false;
+        let attempts = 0;
+        
+        // Retry logic to find valid spot
+        while (!placed && attempts < 20) {
+            attempts++;
+            const bx = r() * this.chunkSize;
+            const bz = r() * this.chunkSize;
+            
             const isSkyscraper = r() > 0.6;
             const width = isSkyscraper ? 10 + r()*10 : 8 + r()*8;
             const height = isSkyscraper ? 40 + r()*60 : 8 + r()*15;
             
-            const posX = chunkWorldX + bx;
-            const posZ = chunkWorldZ + bz;
-            
-            this.createBuilding(posX, posZ, width, height, isSkyscraper, groundObjects);
+            if (isValidBuildingSpot(bx, bz, width)) {
+                const posX = chunkWorldX + bx;
+                const posZ = chunkWorldZ + bz;
+                
+                this.createBuilding(posX, posZ, width, height, isSkyscraper, groundObjects);
+                placedBuildings.push({ x: bx, z: bz, w: width });
+                placed = true;
+            }
         }
     }
     
